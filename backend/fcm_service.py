@@ -1,5 +1,4 @@
 from firebase_admin import messaging
-
 from firebase_utils import get_firebase_app
 
 _firebase_initialized = False
@@ -12,9 +11,9 @@ def init_firebase():
     try:
         get_firebase_app()
         _firebase_initialized = True
-        print("Firebase messaging initialized")
+        print("✅ Firebase messaging initialized")
     except Exception as e:
-        print(f"Firebase init warning: {e}")
+        print(f"⚠️ Firebase credentials not found — FCM push notifications disabled: {e}")
 
 
 async def send_push_notification(fcm_token: str, title: str, body: str, data: dict = None):
@@ -50,4 +49,5 @@ async def send_multicast_notification(tokens: list, title: str, body: str, data:
         print(f"FCM multicast error: {e}")
 
 
+# Safe init — will not crash if credentials are missing
 init_firebase()

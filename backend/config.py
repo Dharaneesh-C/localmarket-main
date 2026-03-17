@@ -1,5 +1,4 @@
 from typing import Optional
-
 from pydantic_settings import BaseSettings
 
 
@@ -18,6 +17,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"   # Ignore unknown env vars — prevents crash from extra Vercel env vars
 
 
 settings = Settings()
