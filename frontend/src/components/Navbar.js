@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   AppBar, Toolbar, Typography, IconButton, Badge, Box,
-  Drawer, List, ListItem, ListItemText, Divider, Avatar,
+  Drawer, List, ListItemButton, ListItemText, Divider, Avatar,
   ListItemIcon, Chip,
 } from '@mui/material';
 import {
@@ -89,12 +89,11 @@ export default function Navbar() {
         ) : (
           <List disablePadding>
             {notifications.map((n) => (
-              <ListItem
+              <ListItemButton
                 key={n.id}
-                button
                 onClick={() => handleNotifClick(n)}
                 sx={{
-                  bgcolor: n.read ? 'transparent' : 'primary.50',
+                  bgcolor: n.read ? 'transparent' : '#E8F5F0',
                   borderBottom: '1px solid',
                   borderColor: 'divider',
                   alignItems: 'flex-start',
@@ -111,7 +110,7 @@ export default function Navbar() {
                     {n.timestamp ? format(n.timestamp) : 'just now'}
                   </Typography>
                 </Box>
-              </ListItem>
+              </ListItemButton>
             ))}
           </List>
         )}
@@ -133,10 +132,10 @@ export default function Navbar() {
         </Box>
         <Divider />
         <List>
-          <ListItem button onClick={handleLogout}>
+          <ListItemButton onClick={handleLogout}>
             <ListItemIcon><LogoutRounded color="error" /></ListItemIcon>
             <ListItemText primary="Sign Out" primaryTypographyProps={{ color: 'error' }} />
-          </ListItem>
+          </ListItemButton>
         </List>
       </Drawer>
     </>
