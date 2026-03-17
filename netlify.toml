@@ -1,0 +1,7 @@
+[build]
+  base = "frontend"
+  command = "npm install && chmod -R 755 node_modules/.bin && npm run build"
+  publish = "build"
+
+[dev]
+  framework = "create-react-app"

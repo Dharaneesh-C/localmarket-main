@@ -1,0 +1,40 @@
+# Node
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+frontend/.cache/
+frontend/node_modules/.cache/
+npm-debug.log*
+
+# Build
+frontend/build/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+env/
+venv/
+backend/venv/
+*.egg-info/
+
+# Environment variables (secrets)
+.env
+frontend/.env
+backend/.env
+
+# Firebase credentials (never push this!)
+firebase-credentials.json
+backend/firebase-credentials.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
