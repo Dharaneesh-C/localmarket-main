@@ -8,6 +8,7 @@ export function NotificationProvider({ children }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
 
   const handleMessage = useCallback((data) => {
     if (data.type === 'new_product' || data.type === 'product_update') {
@@ -20,15 +21,14 @@ export function NotificationProvider({ children }) {
       setNotifications((prev) => [newNotif, ...prev].slice(0, 50));
       setUnreadCount((prev) => prev + 1);
 
-      // Browser notification
-      if (Notification.permission === 'granted') {
+      if (notificationsSupported && Notification.permission === 'granted') {
         new Notification(data.title, {
           body: data.body,
           icon: '/logo192.png',
         });
       }
     }
-  }, []);
+  }, [notificationsSupported]);
 
   useWebSocket(user?.id, handleMessage);
 
@@ -49,12 +49,11 @@ export function NotificationProvider({ children }) {
     setUnreadCount(0);
   };
 
-  // Request browser notification permission
   useEffect(() => {
-    if (user?.role === 'buyer' && Notification.permission === 'default') {
+    if (user?.role === 'buyer' && notificationsSupported && Notification.permission === 'default') {
       Notification.requestPermission();
     }
-  }, [user]);
+  }, [notificationsSupported, user]);
 
   return (
     <NotificationContext.Provider

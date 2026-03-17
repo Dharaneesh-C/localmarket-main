@@ -1,8 +1,6 @@
-import firebase_admin
-from firebase_admin import credentials, messaging
-from config import settings
-import os
-import json
+from firebase_admin import messaging
+
+from firebase_utils import get_firebase_app
 
 _firebase_initialized = False
 
@@ -12,16 +10,11 @@ def init_firebase():
     if _firebase_initialized:
         return
     try:
-        cred_path = settings.FIREBASE_CREDENTIALS_PATH
-        if cred_path and os.path.exists(cred_path):
-            cred = credentials.Certificate(cred_path)
-            firebase_admin.initialize_app(cred)
-            _firebase_initialized = True
-            print("✅ Firebase initialized")
-        else:
-            print("⚠️  Firebase credentials not found — FCM push notifications disabled")
+        get_firebase_app()
+        _firebase_initialized = True
+        print("Firebase messaging initialized")
     except Exception as e:
-        print(f"⚠️  Firebase init error: {e}")
+        print(f"Firebase init warning: {e}")
 
 
 async def send_push_notification(fcm_token: str, title: str, body: str, data: dict = None):
@@ -34,7 +27,7 @@ async def send_push_notification(fcm_token: str, title: str, body: str, data: di
             token=fcm_token,
         )
         response = messaging.send(message)
-        print(f"📲 FCM sent: {response}")
+        print(f"FCM sent: {response}")
         return True
     except Exception as e:
         print(f"FCM error: {e}")
@@ -51,11 +44,10 @@ async def send_multicast_notification(tokens: list, title: str, body: str, data:
             tokens=tokens,
         )
         response = messaging.send_each_for_multicast(message)
-        print(f"📲 FCM multicast: {response.success_count} sent, {response.failure_count} failed")
+        print(f"FCM multicast: {response.success_count} sent, {response.failure_count} failed")
         return response
     except Exception as e:
         print(f"FCM multicast error: {e}")
 
 
-# Initialize on import
 init_firebase()

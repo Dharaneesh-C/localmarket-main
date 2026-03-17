@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from config import settings
 from firebase_db import init_firestore
 from routes import auth, merchant, products
 from websocket_manager import manager
@@ -14,9 +15,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="NearSell API", version="1.0.0", lifespan=lifespan)
 
+cors_origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")] if settings.CORS_ORIGINS != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

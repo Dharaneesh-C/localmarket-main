@@ -1,19 +1,32 @@
 import { useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
+const getWebSocketBaseUrl = () => {
+  const explicitUrl = process.env.REACT_APP_WS_URL;
+  if (explicitUrl) {
+    return explicitUrl.replace(/\/+$/, '');
+  }
+
+  const apiUrl = process.env.REACT_APP_API_URL;
+  if (apiUrl) {
+    return apiUrl.replace(/^http/i, 'ws').replace(/\/+$/, '');
+  }
+
+  return 'ws://localhost:8000';
+};
 
 export function useWebSocket(userId, onMessage) {
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
+  const shouldReconnectRef = useRef(true);
 
   const connect = useCallback(() => {
-    if (!userId) return;
+    if (!userId || !shouldReconnectRef.current) return;
 
-    const ws = new WebSocket(`${WS_URL}/ws/${userId}`);
+    const ws = new WebSocket(`${getWebSocketBaseUrl()}/ws/${userId}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log('🔌 WebSocket connected');
+      console.log('WebSocket connected');
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
         reconnectTimer.current = null;
@@ -30,6 +43,7 @@ export function useWebSocket(userId, onMessage) {
     };
 
     ws.onclose = () => {
+      if (!shouldReconnectRef.current) return;
       console.log('WebSocket disconnected, reconnecting in 3s...');
       reconnectTimer.current = setTimeout(connect, 3000);
     };
@@ -41,8 +55,10 @@ export function useWebSocket(userId, onMessage) {
   }, [userId, onMessage]);
 
   useEffect(() => {
+    shouldReconnectRef.current = true;
     connect();
     return () => {
+      shouldReconnectRef.current = false;
       if (wsRef.current) wsRef.current.close();
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     };

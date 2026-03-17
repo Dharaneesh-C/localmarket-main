@@ -1,23 +1,39 @@
 import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging';
 
-// Replace with your Firebase project config
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || 'your-api-key',
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || 'your-project.firebaseapp.com',
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || 'your-project-id',
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || 'your-project.appspot.com',
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || '000000000',
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || 'your-app-id',
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
-const app = initializeApp(firebaseConfig);
-const messaging = getMessaging(app);
+const hasFirebaseConfig = Object.values(firebaseConfig).every(Boolean);
+const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
+
+const getMessagingInstance = async () => {
+  if (!app || !(await isSupported())) {
+    return null;
+  }
+
+  return getMessaging(app);
+};
 
 export const requestNotificationPermission = async () => {
   try {
+    if (!('Notification' in window)) return null;
+    if (!hasFirebaseConfig) {
+      console.warn('Firebase web config is incomplete. Push notifications are disabled.');
+      return null;
+    }
+
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') return null;
+
+    const messaging = await getMessagingInstance();
+    if (!messaging) return null;
 
     const token = await getToken(messaging, {
       vapidKey: process.env.REACT_APP_FIREBASE_VAPID_KEY,
@@ -30,7 +46,12 @@ export const requestNotificationPermission = async () => {
   }
 };
 
-export const onForegroundMessage = (callback) => {
+export const onForegroundMessage = async (callback) => {
+  const messaging = await getMessagingInstance();
+  if (!messaging) {
+    return () => {};
+  }
+
   return onMessage(messaging, (payload) => {
     console.log('FCM foreground message:', payload);
     callback(payload);

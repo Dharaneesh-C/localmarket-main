@@ -40,6 +40,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
 
     db = get_db()
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database is not initialized",
+        )
     user_doc = db.collection("users").document(user_id).get()
     if not user_doc.exists:
         raise credentials_exception
