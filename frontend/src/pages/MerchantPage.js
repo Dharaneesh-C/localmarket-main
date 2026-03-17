@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Grid, Card, CardContent, Typography, Button, TextField,
   MenuItem, Chip, IconButton, Dialog, DialogTitle, DialogContent,
-  DialogActions, Alert, CircularProgress, Fab, Tooltip, Switch,
+  DialogActions, Alert, CircularProgress, Switch,
   FormControlLabel, Divider, Avatar,
 } from '@mui/material';
 import {
@@ -15,7 +15,6 @@ import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
 
 const CATEGORIES = ['Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
-
 const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '' };
 
 export default function MerchantPage() {
@@ -44,7 +43,7 @@ export default function MerchantPage() {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, []); // eslint-disable-line
 
   const handleOpenAdd = () => {
     setEditProduct(null);
@@ -126,8 +125,6 @@ export default function MerchantPage() {
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Navbar />
       <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 } }}>
-
-        {/* Header */}
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
           <Box>
             <Typography variant="h5" fontWeight={700}>Welcome, {user?.name} 👋</Typography>
@@ -140,7 +137,6 @@ export default function MerchantPage() {
 
         {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
 
-        {/* Stats */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
             { label: 'Total Products', value: stats.total_products || 0, icon: <InventoryRounded />, color: '#1D9E75' },
@@ -150,9 +146,7 @@ export default function MerchantPage() {
             <Grid item xs={12} sm={4} key={s.label}>
               <Card>
                 <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Avatar sx={{ bgcolor: s.color + '20', color: s.color }}>
-                    {s.icon}
-                  </Avatar>
+                  <Avatar sx={{ bgcolor: s.color + '20', color: s.color }}>{s.icon}</Avatar>
                   <Box>
                     <Typography variant="h5" fontWeight={700}>{s.value}</Typography>
                     <Typography variant="body2" color="text.secondary">{s.label}</Typography>
@@ -163,7 +157,6 @@ export default function MerchantPage() {
           ))}
         </Grid>
 
-        {/* Products */}
         <Typography variant="h6" fontWeight={600} mb={2}>Your Listings</Typography>
         {products.length === 0 ? (
           <Card sx={{ p: 5, textAlign: 'center' }}>
@@ -179,22 +172,12 @@ export default function MerchantPage() {
                 <Card>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Chip
-                        label={p.category}
-                        size="small"
-                        sx={{ bgcolor: '#E1F5EE', color: '#0F6E56', fontWeight: 500 }}
-                      />
-                      <Chip
-                        label={p.is_active ? 'Live' : 'Paused'}
-                        size="small"
-                        color={p.is_active ? 'success' : 'warning'}
-                      />
+                      <Chip label={p.category} size="small" sx={{ bgcolor: '#E1F5EE', color: '#0F6E56', fontWeight: 500 }} />
+                      <Chip label={p.is_active ? 'Live' : 'Paused'} size="small" color={p.is_active ? 'success' : 'warning'} />
                     </Box>
                     <Typography variant="h6" fontWeight={600} noWrap>{p.title}</Typography>
                     <Typography variant="body2" color="text.secondary" noWrap>{p.description}</Typography>
-                    <Typography variant="h6" color="primary" fontWeight={700} mt={1}>
-                      ₹{p.price}/{p.unit}
-                    </Typography>
+                    <Typography variant="h6" color="primary" fontWeight={700} mt={1}>₹{p.price}/{p.unit}</Typography>
                     <Divider sx={{ my: 1.5 }} />
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <FormControlLabel
@@ -215,12 +198,9 @@ export default function MerchantPage() {
         )}
       </Box>
 
-      {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth
         PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle fontWeight={700}>
-          {editProduct ? 'Edit Product' : 'Post New Product'}
-        </DialogTitle>
+        <DialogTitle fontWeight={700}>{editProduct ? 'Edit Product' : 'Post New Product'}</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ pt: 1 }}>
             <Grid item xs={12} sm={8}>
@@ -250,20 +230,15 @@ export default function MerchantPage() {
               <TextField label="Image URL (optional)" value={form.image_url}
                 onChange={(e) => setForm({ ...form, image_url: e.target.value })} fullWidth />
             </Grid>
-
             {!editProduct && (
               <Grid item xs={12}>
                 <Typography variant="subtitle2" fontWeight={600} mb={1} color="text.secondary">
                   SET YOUR LOCATION & DELIVERY AREA
                 </Typography>
-                <AreaSelector
-                  onAreaChange={setDeliveryArea}
-                  onMerchantLocationChange={setMerchantLocation}
-                />
+                <AreaSelector onAreaChange={setDeliveryArea} onMerchantLocationChange={setMerchantLocation} />
               </Grid>
             )}
           </Grid>
-
           {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
         </DialogContent>
         <DialogActions sx={{ p: 2.5, gap: 1 }}>

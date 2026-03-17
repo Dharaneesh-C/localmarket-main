@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import {
-  AppBar, Toolbar, Typography, IconButton, Badge, Box, Button,
+  AppBar, Toolbar, Typography, IconButton, Badge, Box,
   Drawer, List, ListItem, ListItemText, Divider, Avatar,
   ListItemIcon, Chip,
 } from '@mui/material';
 import {
   NotificationsRounded, LogoutRounded, StorefrontRounded,
-  PeopleRounded, MenuRounded, CloseRounded, FiberManualRecordRounded,
+  PeopleRounded, CloseRounded, FiberManualRecordRounded,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';

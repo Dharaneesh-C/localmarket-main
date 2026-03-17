@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box, Grid, Card, CardContent, CardMedia, Typography, Button,
+  Box, Grid, Card, CardContent, Typography, Button,
   Chip, TextField, InputAdornment, CircularProgress, Alert,
   Dialog, DialogTitle, DialogContent, IconButton, Divider, Fade,
 } from '@mui/material';
@@ -46,7 +46,7 @@ const getCategoryEmoji = (cat) => {
 };
 
 export default function BuyerPage() {
-  const { user, saveLocation } = useAuth();
+  const { saveLocation } = useAuth();
   const { notifications } = useNotifications();
   const [products, setProducts] = useState([]);
   const [filtered, setFiltered] = useState([]);
@@ -86,12 +86,12 @@ export default function BuyerPage() {
     );
   }, [loadProducts, saveLocation]);
 
-  // Refresh feed when new notification arrives
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (notifications.length > 0 && userLocation) {
       loadProducts(userLocation[0], userLocation[1]);
     }
-  }, [notifications.length]);
+  }, [notifications.length]); // eslint-disable-line
 
   useEffect(() => {
     const q = search.toLowerCase();
@@ -119,7 +119,6 @@ export default function BuyerPage() {
 
         {locationError && <Alert severity="warning" sx={{ mb: 2 }}>{locationError}</Alert>}
 
-        {/* Search + Refresh */}
         <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
           <TextField
             placeholder="Search products, merchants, categories..."
@@ -134,7 +133,6 @@ export default function BuyerPage() {
           </Button>
         </Box>
 
-        {/* Leaflet Map */}
         {userLocation && (
           <Box sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e0e0e0', mb: 3 }}>
             <MapContainer center={userLocation} zoom={14} style={{ width: '100%', height: '380px' }}>
@@ -143,13 +141,9 @@ export default function BuyerPage() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               <RecenterMap center={userLocation} />
-
-              {/* User location */}
               <Marker position={userLocation} icon={userIcon}>
                 <Popup><b>You are here</b></Popup>
               </Marker>
-
-              {/* Merchant markers */}
               {filtered.map((p) => {
                 const [lng, lat] = p.merchant_location.coordinates;
                 return (
@@ -173,7 +167,6 @@ export default function BuyerPage() {
           </Box>
         )}
 
-        {/* Products Grid */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
         ) : filtered.length === 0 ? (
@@ -194,8 +187,8 @@ export default function BuyerPage() {
                     onClick={() => setSelectedProduct(p)}
                   >
                     {p.image_url ? (
-                      <CardMedia component="img" height="130" image={p.image_url} alt={p.title}
-                        sx={{ objectFit: 'cover' }}
+                      <Box component="img" src={p.image_url} alt={p.title}
+                        sx={{ width: '100%', height: 130, objectFit: 'cover' }}
                         onError={(e) => { e.target.style.display = 'none'; }} />
                     ) : (
                       <Box sx={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -226,7 +219,6 @@ export default function BuyerPage() {
         )}
       </Box>
 
-      {/* Product Detail Dialog */}
       <Dialog open={!!selectedProduct} onClose={() => setSelectedProduct(null)} maxWidth="sm" fullWidth
         PaperProps={{ sx: { borderRadius: 3 } }}>
         {selectedProduct && (
