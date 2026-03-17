@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from database import get_db
+from firebase_db import get_db
 from auth_utils import require_buyer, get_current_user
 from bson import ObjectId
 
