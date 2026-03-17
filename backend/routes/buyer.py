@@ -22,22 +22,35 @@ async def nearby_merchants(
     current_user=Depends(get_current_user)
 ):
     db = get_db()
+
     all_merchants = db.collection("users").where("role", "==", "merchant").get()
+
     result = []
+
     for m_doc in all_merchants:
         m = m_doc.to_dict()
+
         m_loc = m.get("location")
-        if not m_loc or not m_loc.get("coordinates"):
+        if not m_loc:
             continue
-        m_lng, m_lat = m_loc["coordinates"][0], m_loc["coordinates"][1]
+
+        coords = m_loc.get("coordinates")
+        if not coords or len(coords) != 2:
+            continue
+
+        m_lng, m_lat = coords
+
         dist = haversine(lng, lat, m_lng, m_lat)
+
         if dist <= radius_km:
             result.append({
-                "id": m["id"],
-                "name": m["name"],
+                "id": m_doc.id,   # ✅ FIXED
+                "name": m.get("name"),
                 "phone": m.get("phone"),
                 "location": m.get("location"),
                 "distance_km": round(dist, 2),
             })
+
     result.sort(key=lambda x: x["distance_km"])
+
     return result

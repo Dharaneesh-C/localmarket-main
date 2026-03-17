@@ -1,46 +1,54 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
 from config import settings
 from firebase_db import init_firestore
-from routes import auth, merchant, products
-from websocket_manager import manager
+
+# Explicit imports — required for Vercel serverless Python runtime
+from routes.auth import router as auth_router
+from routes.merchant import router as merchant_router
+from routes.buyer import router as buyer_router
+from routes.products import router as products_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_firestore()
+    try:
+        init_firestore()
+    except Exception as e:
+        print(f"⚠️ Firestore init warning: {e}")
     yield
 
 
-app = FastAPI(title="NearSell API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="NearSell API",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
-cors_origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(",")] if settings.CORS_ORIGINS != "*" else ["*"]
+# CORS
+cors_origins = (
+    [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
+    if settings.CORS_ORIGINS != "*"
+    else ["*"]
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(merchant.router, prefix="/api/merchant", tags=["Merchant"])
-app.include_router(buyer.router, prefix="/api/buyer", tags=["Buyer"])
-app.include_router(products.router, prefix="/api/products", tags=["Products"])
-
-
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    await manager.connect(websocket, user_id)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(user_id)
+# Routes
+app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
+app.include_router(merchant_router, prefix="/api/merchant", tags=["Merchant"])
+app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyer"])
+app.include_router(products_router, prefix="/api/products", tags=["Products"])
 
 
 @app.get("/")
 async def root():
-    return {"message": "NearSell API is running"}
+    return {"message": "NearSell API is running ✅"}
