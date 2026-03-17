@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from firebase_db import init_firestore
-from routes import auth, merchant, buyer, products
+from routes import auth, merchant, products
 from websocket_manager import manager
 
 
