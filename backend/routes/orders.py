@@ -134,3 +134,35 @@ async def update_order_status(
     store_notification(order_data["buyer_id"], notification)
 
     return {"message": f"Order status updated to {data.status}"}
+
+
+# ─── Merchant: Ring buyer alarm (I've Arrived!) ──────────────────────────
+@router.post("/{order_id}/arrived")
+async def merchant_arrived(
+    order_id: str,
+    current_user=Depends(require_merchant)
+):
+    db = get_db()
+    order_ref = db.collection("orders").document(order_id)
+    order = order_ref.get()
+
+    if not order.exists:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order_data = order.to_dict()
+    if order_data.get("merchant_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+
+    # Send alarm notification to buyer
+    notification = {
+        "type": "merchant_arrived",
+        "order_id": order_id,
+        "title": f"🔔 {current_user['name']} has arrived!",
+        "body": f"Your merchant is at your door for: {order_data.get('product_title')}",
+        "merchant_name": current_user["name"],
+        "product_title": order_data.get("product_title"),
+        "alarm": True,
+    }
+    store_notification(order_data["buyer_id"], notification)
+
+    return {"message": "Buyer has been alerted"}

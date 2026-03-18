@@ -17,6 +17,7 @@ import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { getNearbyProducts, placeOrder, getMyOrders } from '../utils/api';
+import { stopAlarm } from '../utils/alarm';
 
 // Fix leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -234,6 +235,7 @@ export default function BuyerPage() {
   const [locationError, setLocationError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [orderSuccess, setOrderSuccess] = useState('');
+  const [alarmNotif, setAlarmNotif] = useState(null);
 
   const loadProducts = useCallback(async (lat, lng) => {
     setLoading(true);
@@ -266,10 +268,21 @@ export default function BuyerPage() {
   }, [loadProducts, saveLocation]);
 
   useEffect(() => {
-    if (notifications.length > 0 && userLocation) {
-      loadProducts(userLocation[0], userLocation[1]);
+    if (notifications.length > 0) {
+      const latest = notifications[0];
+      if (latest && latest.type === 'merchant_arrived' && !latest.read) {
+        setAlarmNotif(latest);
+      }
+      if (userLocation) {
+        loadProducts(userLocation[0], userLocation[1]);
+      }
     }
   }, [notifications.length]); // eslint-disable-line
+
+  const dismissAlarm = () => {
+    stopAlarm();
+    setAlarmNotif(null);
+  };
 
   useEffect(() => {
     const q = search.toLowerCase();
@@ -295,7 +308,38 @@ export default function BuyerPage() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Navbar />
-      <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 } }}>
+
+      {/* 🔔 Merchant Arrived Alarm Banner */}
+      {alarmNotif && (
+        <Box sx={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          bgcolor: '#FF6B35', color: 'white',
+          p: 2, textAlign: 'center',
+          boxShadow: '0 4px 20px rgba(255,107,53,0.6)',
+          animation: 'pulse 0.5s ease-in-out infinite alternate',
+          '@keyframes pulse': {
+            from: { opacity: 1 },
+            to: { opacity: 0.85 },
+          },
+        }}>
+          <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: 1 }}>
+            🔔 YOUR MERCHANT HAS ARRIVED! 🔔
+          </Typography>
+          <Typography variant="body1" sx={{ mt: 0.5, opacity: 0.95 }}>
+            {alarmNotif.body}
+          </Typography>
+          <Button
+            variant="outlined"
+            onClick={dismissAlarm}
+            sx={{ mt: 1.5, color: 'white', borderColor: 'white', fontWeight: 700,
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.2)', borderColor: 'white' } }}
+          >
+            ✅ OK, I Got It — Stop Alarm
+          </Button>
+        </Box>
+      )}
+
+      <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 }, mt: alarmNotif ? '140px' : 0 }}>
 
         <Box sx={{ mb: 3 }}>
           <Typography variant="h5" fontWeight={700}>Nearby Products 📍</Typography>

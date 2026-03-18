@@ -17,7 +17,7 @@ import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../context/AuthContext';
 import {
   createProduct, getMyProducts, updateProduct, deleteProduct,
-  getMerchantDashboard, getMerchantOrders, updateOrderStatus,
+  getMerchantDashboard, getMerchantOrders, updateOrderStatus, merchantArrived,
 } from '../utils/api';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
@@ -140,6 +140,8 @@ function OrdersTab() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
+  const [arrivedId, setArrivedId] = useState(null);
+  const [arrivedSuccess, setArrivedSuccess] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,6 +156,19 @@ function OrdersTab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleArrived = async (orderId) => {
+    setArrivedId(orderId);
+    try {
+      await merchantArrived(orderId);
+      setArrivedSuccess('🔔 Buyer has been alerted! Their phone is ringing.');
+      setTimeout(() => setArrivedSuccess(''), 5000);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setArrivedId(null);
+    }
+  };
 
   const handleStatus = async (orderId, status) => {
     setUpdatingId(orderId);
@@ -187,6 +202,7 @@ function OrdersTab() {
         <Typography variant="h6" fontWeight={600}>Incoming Orders</Typography>
         <Button size="small" variant="outlined" onClick={load}>Refresh</Button>
       </Box>
+      {arrivedSuccess && <Alert severity="success" sx={{ mb: 2 }}>{arrivedSuccess}</Alert>}
       <Grid container spacing={2}>
         {orders.map((o) => {
           const buyerLoc = o.buyer_location;
@@ -260,11 +276,30 @@ function OrdersTab() {
                     </Box>
                   )}
                   {o.status === 'accepted' && (
-                    <Button size="small" fullWidth variant="contained"
-                      disabled={updatingId === o.id}
-                      onClick={() => handleStatus(o.id, 'completed')}>
-                      {updatingId === o.id ? <CircularProgress size={16} color="inherit" /> : 'Mark as Completed'}
-                    </Button>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {/* Arrived alarm button */}
+                      <Button
+                        size="small" fullWidth variant="contained"
+                        disabled={arrivedId === o.id}
+                        onClick={() => handleArrived(o.id)}
+                        sx={{
+                          bgcolor: '#FF6B35',
+                          '&:hover': { bgcolor: '#C4400A' },
+                          fontWeight: 700,
+                          fontSize: 13,
+                          py: 1,
+                        }}
+                      >
+                        {arrivedId === o.id
+                          ? <CircularProgress size={16} color="inherit" />
+                          : '🔔 I\'ve Arrived! Ring Buyer'}
+                      </Button>
+                      <Button size="small" fullWidth variant="outlined"
+                        disabled={updatingId === o.id}
+                        onClick={() => handleStatus(o.id, 'completed')}>
+                        {updatingId === o.id ? <CircularProgress size={16} color="inherit" /> : '✅ Mark as Completed'}
+                      </Button>
+                    </Box>
                   )}
                 </CardContent>
               </Card>

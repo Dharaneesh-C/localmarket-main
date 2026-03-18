@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { playArrivalAlarm, stopAlarm } from '../utils/alarm';
 
 const NotificationContext = createContext(null);
 
@@ -11,22 +12,36 @@ export function NotificationProvider({ children }) {
   const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
 
   const handleMessage = useCallback((data) => {
-    if (data.type === 'new_product' || data.type === 'product_update') {
-      const newNotif = {
-        id: Date.now(),
-        ...data,
-        read: false,
-        timestamp: new Date().toISOString(),
-      };
-      setNotifications((prev) => [newNotif, ...prev].slice(0, 50));
-      setUnreadCount((prev) => prev + 1);
+    // Always add to notification list
+    const newNotif = {
+      id: Date.now(),
+      ...data,
+      read: false,
+      timestamp: new Date().toISOString(),
+    };
+    setNotifications((prev) => [newNotif, ...prev].slice(0, 50));
+    setUnreadCount((prev) => prev + 1);
 
+    // 🔔 Merchant arrived — trigger alarm
+    if (data.type === 'merchant_arrived') {
+      playArrivalAlarm();
+      // Browser notification too
       if (notificationsSupported && Notification.permission === 'granted') {
         new Notification(data.title, {
           body: data.body,
           icon: '/logo192.png',
+          requireInteraction: true, // stays on screen until dismissed
         });
       }
+      return;
+    }
+
+    // Regular notifications
+    if (notificationsSupported && Notification.permission === 'granted') {
+      new Notification(data.title, {
+        body: data.body,
+        icon: '/logo192.png',
+      });
     }
   }, [notificationsSupported]);
 
@@ -57,7 +72,7 @@ export function NotificationProvider({ children }) {
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, markAllRead, markRead, clearAll }}
+      value={{ notifications, unreadCount, markAllRead, markRead, clearAll, stopAlarm }}
     >
       {children}
     </NotificationContext.Provider>

@@ -33,5 +33,6 @@ export const placeOrder = (data) => API.post('/orders/', data);
 export const getMyOrders = () => API.get('/orders/my-orders');
 export const getMerchantOrders = () => API.get('/orders/merchant-orders');
 export const updateOrderStatus = (orderId, status) => API.put(`/orders/${orderId}/status`, { status });
+export const merchantArrived = (orderId) => API.post(`/orders/${orderId}/arrived`);
 
 export default API;
