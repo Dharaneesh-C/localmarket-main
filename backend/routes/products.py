@@ -7,6 +7,7 @@ from fcm_service import send_multicast_notification
 from datetime import datetime
 import uuid
 import math
+import json
 
 router = APIRouter()
 
@@ -35,7 +36,34 @@ def point_in_polygon(px, py, polygon_coords):
         return False
 
 
+def flatten_for_firestore(data: dict) -> dict:
+    """
+    Firestore cannot store deeply nested arrays (e.g. GeoJSON Polygon coordinates).
+    Serialize delivery_area and merchant_location as JSON strings before saving.
+    """
+    result = dict(data)
+    for key in ["delivery_area", "merchant_location"]:
+        if key in result and isinstance(result[key], dict):
+            result[key] = json.dumps(result[key])
+    return result
+
+
+def unflatten_from_firestore(data: dict) -> dict:
+    """
+    Deserialize delivery_area and merchant_location back to dicts when reading.
+    """
+    result = dict(data)
+    for key in ["delivery_area", "merchant_location"]:
+        if key in result and isinstance(result[key], str):
+            try:
+                result[key] = json.loads(result[key])
+            except Exception:
+                pass
+    return result
+
+
 def serialize_product(p, distance_km=None):
+    p = unflatten_from_firestore(p)
     return {
         "id": p["id"],
         "title": p["title"],
@@ -59,7 +87,8 @@ def serialize_product(p, distance_km=None):
 async def create_product(data: ProductCreate, current_user=Depends(require_merchant)):
     db = get_db()
     product_id = str(uuid.uuid4())
-    product_doc = {
+
+    raw_doc = {
         "id": product_id,
         **data.model_dump(),
         "merchant_id": current_user["id"],
@@ -68,6 +97,9 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
         "is_active": True,
         "created_at": datetime.utcnow().isoformat(),
     }
+
+    # Flatten nested GeoJSON for Firestore compatibility
+    product_doc = flatten_for_firestore(raw_doc)
     db.collection("products").document(product_id).set(product_doc)
 
     try:
@@ -78,7 +110,15 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
         for b_doc in all_buyers:
             b = b_doc.to_dict()
             b_loc = b.get("location")
-            if not b_loc or not b_loc.get("coordinates"):
+            if not b_loc:
+                continue
+            # location may also be stored as JSON string
+            if isinstance(b_loc, str):
+                try:
+                    b_loc = json.loads(b_loc)
+                except Exception:
+                    continue
+            if not b_loc.get("coordinates"):
                 continue
             b_lng, b_lat = b_loc["coordinates"][0], b_loc["coordinates"][1]
             in_area = False
@@ -104,13 +144,17 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
 
         fcm_tokens = [b["fcm_token"] for b in buyers_to_notify if b.get("fcm_token")]
         if fcm_tokens:
-            await send_multicast_notification(fcm_tokens, notification_payload["title"], notification_payload["body"])
+            await send_multicast_notification(
+                fcm_tokens,
+                notification_payload["title"],
+                notification_payload["body"]
+            )
 
         print(f"📢 Notified {len(buyers_to_notify)} buyers")
     except Exception as e:
         print(f"Notification error: {e}")
 
-    return serialize_product(product_doc)
+    return serialize_product(raw_doc)
 
 
 @router.get("/nearby")
@@ -125,12 +169,16 @@ async def get_nearby_products(
     result = []
 
     for p_doc in all_products:
-        p = p_doc.to_dict()
-        m_loc = p.get("merchant_location", {}).get("coordinates", [0, 0])
-        dist = haversine(lng, lat, m_loc[0], m_loc[1])
+        p = unflatten_from_firestore(p_doc.to_dict())
+        m_loc = p.get("merchant_location", {})
+        if isinstance(m_loc, dict):
+            coords = m_loc.get("coordinates", [0, 0])
+        else:
+            coords = [0, 0]
+        dist = haversine(lng, lat, coords[0], coords[1])
         in_area = False
         delivery_area = p.get("delivery_area")
-        if delivery_area and delivery_area.get("coordinates"):
+        if delivery_area and isinstance(delivery_area, dict) and delivery_area.get("coordinates"):
             in_area = point_in_polygon(lng, lat, delivery_area["coordinates"])
         if in_area or dist <= radius_km:
             result.append(serialize_product(p, distance_km=dist))
@@ -143,7 +191,7 @@ async def get_nearby_products(
 async def get_my_products(current_user=Depends(require_merchant)):
     db = get_db()
     products = db.collection("products").where("merchant_id", "==", current_user["id"]).get()
-    result = [p.to_dict() for p in products]
+    result = [unflatten_from_firestore(p.to_dict()) for p in products]
     result.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return [serialize_product(p) for p in result]
 
