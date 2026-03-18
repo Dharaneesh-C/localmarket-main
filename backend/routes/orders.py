@@ -136,7 +136,7 @@ async def update_order_status(
     return {"message": f"Order status updated to {data.status}"}
 
 
-# ─── Merchant: Ring buyer alarm (I've Arrived!) ──────────────────────────
+# ─── Merchant: Ring buyer alarm (I've Arrived!) ───────────────────────────────
 @router.post("/{order_id}/arrived")
 async def merchant_arrived(
     order_id: str,
