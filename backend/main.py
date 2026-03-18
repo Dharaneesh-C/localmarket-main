@@ -59,13 +59,42 @@ async def root():
 @app.get("/debug/firebase")
 async def debug_firebase():
     import os
+    import json
     import firebase_admin
+    from firebase_admin import credentials, firestore
+
     cred_env = os.getenv("FIREBASE_CREDENTIALS")
-    from firebase_db import db
-    return {
+    result = {
         "FIREBASE_CREDENTIALS_set": bool(cred_env),
         "FIREBASE_CREDENTIALS_length": len(cred_env) if cred_env else 0,
-        "FIREBASE_CREDENTIALS_starts_with": cred_env[:30] if cred_env else None,
         "firebase_apps_count": len(firebase_admin._apps),
-        "db_initialized": db is not None,
+        "db_initialized": False,
+        "error": None,
+        "private_key_preview": None,
     }
+
+    try:
+        cred_dict = json.loads(cred_env)
+        pk = cred_dict.get("private_key", "")
+        # Show first and last 40 chars of private key for diagnosis
+        result["private_key_preview"] = pk[:40] + " ... " + pk[-40:]
+        result["private_key_has_newlines"] = "\n" in pk
+        result["private_key_has_escaped_newlines"] = "\\n" in pk
+
+        # Fix and attempt init
+        pk = pk.replace("\\n", "\n")
+        cred_dict["private_key"] = pk
+
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+
+        db_client = firestore.client()
+        result["db_initialized"] = db_client is not None
+        result["firebase_apps_count"] = len(firebase_admin._apps)
+        result["status"] = "SUCCESS"
+    except Exception as e:
+        result["error"] = str(e)
+        result["status"] = "FAILED"
+
+    return result
