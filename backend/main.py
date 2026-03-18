@@ -54,3 +54,18 @@ app.include_router(notifications_router, prefix="/api/notifications", tags=["Not
 @app.get("/")
 async def root():
     return {"message": "NearSell API is running ✅"}
+
+
+@app.get("/debug/firebase")
+async def debug_firebase():
+    import os
+    import firebase_admin
+    cred_env = os.getenv("FIREBASE_CREDENTIALS")
+    from firebase_db import db
+    return {
+        "FIREBASE_CREDENTIALS_set": bool(cred_env),
+        "FIREBASE_CREDENTIALS_length": len(cred_env) if cred_env else 0,
+        "FIREBASE_CREDENTIALS_starts_with": cred_env[:30] if cred_env else None,
+        "firebase_apps_count": len(firebase_admin._apps),
+        "db_initialized": db is not None,
+    }
