@@ -25,9 +25,10 @@ backend/venv/
 frontend/.env
 backend/.env
 
-# Firebase credentials (never push this!)
+# Firebase credentials (never push!)
 firebase-credentials.json
 backend/firebase-credentials.json
+backend/service-account.json
 
 # OS
 .DS_Store
