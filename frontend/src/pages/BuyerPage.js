@@ -3,10 +3,10 @@ import {
   Box, Grid, Card, CardContent, Typography, Button,
   Chip, TextField, InputAdornment, CircularProgress, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
-  Divider, Fade, Tab, Tabs, Badge, TextField as MuiTextField,
+  Divider, Fade, Tab, Tabs,
 } from '@mui/material';
 import {
-  SearchRounded, LocationOnRounded, CloseRounded,
+  SearchRounded, CloseRounded,
   DirectionsRounded, StorefrontRounded, RefreshRounded,
   ShoppingCartRounded, ListAltRounded, AddRounded, RemoveRounded,
 } from '@mui/icons-material';
@@ -42,10 +42,8 @@ function RecenterMap({ center }) {
   return null;
 }
 
-const getCategoryEmoji = (cat) => {
-  const map = { 'Vegetables & Fruits': '🥦', Dairy: '🥛', 'Handmade Goods': '🧶', 'Cooked Food': '🍱', Other: '📦' };
-  return map[cat] || '📦';
-};
+const CATEGORY_EMOJI = { 'Vegetables & Fruits': '🥦', Dairy: '🥛', 'Handmade Goods': '🧶', 'Cooked Food': '🍱', Other: '📦' };
+const getCategoryEmoji = (cat) => CATEGORY_EMOJI[cat] || '📦';
 
 const statusColor = { pending: 'warning', accepted: 'success', rejected: 'error', completed: 'success' };
 const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected: '❌ Rejected', completed: '🎉 Completed' };
