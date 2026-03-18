@@ -14,7 +14,7 @@ import { useAuth } from '../context/AuthContext';
 import { createProduct, getMyProducts, updateProduct, deleteProduct, getMerchantDashboard } from '../utils/api';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
-// Using ImgBB for image hosting (free, no account upgrade needed)
+// Image hosting via ImgBB (free — no Firebase Storage upgrade needed)
 const IMGBB_API_KEY = process.env.REACT_APP_IMGBB_API_KEY || 'f4509acb17c6d5497685c228f5267be8';
 
 const CATEGORIES = ['Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
