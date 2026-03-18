@@ -316,6 +316,7 @@ export default function MerchantPage() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
+  const [orders, setOrders] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
@@ -329,9 +330,14 @@ export default function MerchantPage() {
 
   const loadData = async () => {
     try {
-      const [prodRes, statsRes] = await Promise.all([getMyProducts(), getMerchantDashboard()]);
+      const [prodRes, statsRes, ordersRes] = await Promise.all([
+        getMyProducts(),
+        getMerchantDashboard(),
+        getMerchantOrders(),
+      ]);
       setProducts(prodRes.data);
       setStats(statsRes.data);
+      setOrders(ordersRes.data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -448,25 +454,153 @@ export default function MerchantPage() {
         {activeTab === 0 && (
           <>
             {/* Stats */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              {[
+            {(() => {
+              const pendingOrders = orders.filter(o => o.status === 'pending').length;
+              const activeOrders = orders.filter(o => o.status === 'accepted').length;
+              const statCards = [
                 { label: 'Total Products', value: stats.total_products || 0, icon: <InventoryRounded />, color: '#1D9E75' },
                 { label: 'Active Listings', value: stats.active_products || 0, icon: <CheckCircleRounded />, color: '#1D9E75' },
                 { label: 'Paused', value: stats.paused_products || 0, icon: <PauseCircleRounded />, color: '#EF9F27' },
-              ].map((s) => (
-                <Grid item xs={12} sm={4} key={s.label}>
-                  <Card>
-                    <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Avatar sx={{ bgcolor: s.color + '20', color: s.color }}>{s.icon}</Avatar>
-                      <Box>
-                        <Typography variant="h5" fontWeight={700}>{s.value}</Typography>
-                        <Typography variant="body2" color="text.secondary">{s.label}</Typography>
-                      </Box>
-                    </CardContent>
-                  </Card>
+                { label: 'Pending Orders', value: pendingOrders, icon: <ListAltRounded />, color: pendingOrders > 0 ? '#FF6B35' : '#888' },
+                { label: 'Active Deliveries', value: activeOrders, icon: <PersonPinCircleRounded />, color: activeOrders > 0 ? '#378ADD' : '#888' },
+              ];
+              return (
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  {statCards.map((s) => (
+                    <Grid item xs={6} sm={4} md={2.4} key={s.label}>
+                      <Card sx={{ border: (s.label === 'Pending Orders' && s.value > 0) ? '2px solid #FF6B35' : 'none' }}>
+                        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: '12px !important' }}>
+                          <Avatar sx={{ bgcolor: s.color + '20', color: s.color, width: 36, height: 36 }}>{s.icon}</Avatar>
+                          <Box>
+                            <Typography variant="h6" fontWeight={700} lineHeight={1}>{s.value}</Typography>
+                            <Typography variant="caption" color="text.secondary">{s.label}</Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
                 </Grid>
-              ))}
-            </Grid>
+              );
+            })()}
+
+            {/* ── Live Orders Map ── */}
+            {(() => {
+              const ordersWithLocation = orders.filter(
+                o => ['pending', 'accepted'].includes(o.status) &&
+                o.buyer_location && o.buyer_location.coordinates
+              );
+              if (ordersWithLocation.length === 0) return null;
+
+              // Center map on first buyer location
+              const firstCoords = ordersWithLocation[0].buyer_location.coordinates;
+              const mapCenter = [firstCoords[1], firstCoords[0]];
+
+              return (
+                <Card sx={{ mb: 3, overflow: 'hidden' }}>
+                  <CardContent sx={{ pb: '0 !important', pt: 2, px: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                      <Box>
+                        <Typography variant="h6" fontWeight={700}>
+                          📍 Live Order Locations
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {ordersWithLocation.length} buyer{ordersWithLocation.length > 1 ? 's' : ''} waiting for delivery
+                        </Typography>
+                      </Box>
+                      <Chip
+                        label={`${ordersWithLocation.length} active`}
+                        size="small"
+                        sx={{ bgcolor: '#FF6B3520', color: '#FF6B35', fontWeight: 600 }}
+                      />
+                    </Box>
+                  </CardContent>
+                  <Box sx={{ borderTop: '1px solid #f0f0f0' }}>
+                    <MapContainer
+                      center={mapCenter}
+                      zoom={13}
+                      style={{ width: '100%', height: 340 }}
+                      scrollWheelZoom={false}
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      {ordersWithLocation.map((o) => {
+                        const [lng, lat] = o.buyer_location.coordinates;
+                        const isPending = o.status === 'pending';
+                        const icon = L.divIcon({
+                          html: `
+                            <div style="
+                              background:${isPending ? '#FF6B35' : '#378ADD'};
+                              width:38px;height:38px;
+                              border-radius:50%;
+                              border:3px solid white;
+                              box-shadow:0 2px 10px rgba(0,0,0,0.35);
+                              display:flex;align-items:center;
+                              justify-content:center;
+                              font-size:18px;
+                            ">👤</div>
+                            <div style="
+                              position:absolute;top:-8px;right:-8px;
+                              background:${isPending ? '#EF9F27' : '#1D9E75'};
+                              color:white;border-radius:50%;
+                              width:18px;height:18px;
+                              display:flex;align-items:center;
+                              justify-content:center;
+                              font-size:10px;font-weight:bold;
+                              border:2px solid white;
+                            ">${isPending ? '!' : '✓'}</div>
+                          `,
+                          iconSize: [38, 38],
+                          iconAnchor: [19, 19],
+                          className: '',
+                        });
+                        return (
+                          <Marker key={o.id} position={[lat, lng]} icon={icon}>
+                            <Popup>
+                              <Box sx={{ minWidth: 160 }}>
+                                <Typography fontWeight={700} fontSize={13}>{o.buyer_name}</Typography>
+                                <Typography fontSize={12} color="text.secondary">{o.product_title}</Typography>
+                                <Typography fontSize={12}>{o.quantity} {o.unit} — <strong>₹{o.total_price}</strong></Typography>
+                                <Chip
+                                  label={o.status === 'pending' ? '⏳ Pending' : '✅ Accepted'}
+                                  size="small"
+                                  color={o.status === 'pending' ? 'warning' : 'success'}
+                                  sx={{ mt: 0.5, fontSize: 10 }}
+                                />
+                                {o.buyer_phone && (
+                                  <Typography fontSize={12} mt={0.5}>📞 {o.buyer_phone}</Typography>
+                                )}
+                                <Button
+                                  size="small" variant="outlined" fullWidth
+                                  sx={{ mt: 1, fontSize: 11 }}
+                                  onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=16`, '_blank')}
+                                >
+                                  Open in Maps
+                                </Button>
+                              </Box>
+                            </Popup>
+                          </Marker>
+                        );
+                      })}
+                    </MapContainer>
+                  </Box>
+                  {/* Legend */}
+                  <CardContent sx={{ pt: 1.5, pb: '12px !important' }}>
+                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#FF6B35' }} />
+                        <Typography variant="caption" color="text.secondary">Pending order</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#378ADD' }} />
+                        <Typography variant="caption" color="text.secondary">Accepted order</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Product listings */}
             <Typography variant="h6" fontWeight={600} mb={2}>Your Listings</Typography>
