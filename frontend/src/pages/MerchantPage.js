@@ -1,19 +1,39 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Grid, Card, CardContent, Typography, Button, TextField,
   MenuItem, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Alert, CircularProgress, Switch,
-  FormControlLabel, Divider, Avatar, LinearProgress,
+  FormControlLabel, Divider, Avatar, LinearProgress, Tab, Tabs,
 } from '@mui/material';
 import {
   AddRounded, EditRounded, DeleteRounded, StorefrontRounded,
   InventoryRounded, CheckCircleRounded, PauseCircleRounded,
-  CloudUploadRounded, CloseRounded,
+  CloudUploadRounded, CloseRounded, ListAltRounded,
+  PersonPinCircleRounded,
 } from '@mui/icons-material';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../context/AuthContext';
-import { createProduct, getMyProducts, updateProduct, deleteProduct, getMerchantDashboard } from '../utils/api';
+import { createProduct, getMyProducts, updateProduct, deleteProduct, getMerchantDashboard, getMerchantOrders, updateOrderStatus } from '../utils/api';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
+
+// Fix leaflet icons
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+});
+
+const buyerIcon = L.divIcon({
+  html: `<div style="background:#FF6B35;width:28px;height:28px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;">👤</div>`,
+  iconSize: [28, 28], iconAnchor: [14, 14], className: '',
+});
+
+const statusColor = { pending: 'warning', accepted: 'success', rejected: 'error', completed: 'success' };
+const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected: '❌ Rejected', completed: '🎉 Completed' };
 // Image hosting via ImgBB (free — no Firebase Storage upgrade needed)
 const IMGBB_API_KEY = process.env.REACT_APP_IMGBB_API_KEY || 'f4509acb17c6d5497685c228f5267be8';
 
@@ -189,11 +209,157 @@ function ImageUploader({ value, onChange }) {
   );
 }
 
+// ─── Orders Tab ──────────────────────────────────────────────────────────────
+function OrdersTab() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [mapOrder, setMapOrder] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getMerchantOrders();
+      setOrders(res.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleStatus = async (orderId, status) => {
+    setUpdatingId(orderId);
+    try {
+      await updateOrderStatus(orderId, status);
+      await load();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>;
+
+  if (orders.length === 0) return (
+    <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
+      <ListAltRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
+      <Typography variant="h6" color="text.secondary">No orders yet</Typography>
+      <Typography variant="body2" color="text.disabled">When buyers place orders, they'll appear here</Typography>
+    </Card>
+  );
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h6" fontWeight={600}>Incoming Orders</Typography>
+        <Button size="small" variant="outlined" onClick={load}>Refresh</Button>
+      </Box>
+      <Grid container spacing={2}>
+        {orders.map((o) => {
+          const buyerLoc = o.buyer_location;
+          const hasBuyerMap = buyerLoc && buyerLoc.coordinates;
+          const [bLng, bLat] = hasBuyerMap ? buyerLoc.coordinates : [null, null];
+
+          return (
+            <Grid item xs={12} md={6} key={o.id}>
+              <Card sx={{ border: o.status === 'pending' ? '2px solid #EF9F27' : '1px solid #e0e0e0' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography fontWeight={700} noWrap sx={{ maxWidth: '60%' }}>{o.product_title}</Typography>
+                    <Chip label={statusLabel[o.status]} size="small" color={statusColor[o.status]} />
+                  </Box>
+
+                  <Typography variant="body2">👤 {o.buyer_name}</Typography>
+                  {o.buyer_phone && <Typography variant="body2">📞 {o.buyer_phone}</Typography>}
+                  <Typography variant="body2" mt={0.5}>
+                    {o.quantity} {o.unit} — <strong>₹{o.total_price}</strong>
+                  </Typography>
+                  {o.note && (
+                    <Typography variant="caption" color="text.secondary" display="block">📝 {o.note}</Typography>
+                  )}
+                  <Typography variant="caption" color="text.disabled" display="block">
+                    {new Date(o.created_at).toLocaleString()}
+                  </Typography>
+
+                  {/* Buyer location map */}
+                  {hasBuyerMap && (
+                    <Box sx={{ mt: 1.5, borderRadius: 2, overflow: 'hidden', border: '1px solid #e0e0e0' }}>
+                      <MapContainer
+                        center={[bLat, bLng]}
+                        zoom={15}
+                        style={{ width: '100%', height: 180 }}
+                        zoomControl={false}
+                        dragging={false}
+                        scrollWheelZoom={false}
+                      >
+                        <TileLayer
+                          attribution='&copy; OpenStreetMap'
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        />
+                        <Marker position={[bLat, bLng]} icon={buyerIcon}>
+                          <Popup>{o.buyer_name}'s location</Popup>
+                        </Marker>
+                      </MapContainer>
+                      <Button
+                        size="small"
+                        fullWidth
+                        startIcon={<PersonPinCircleRounded />}
+                        onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${bLat}&mlon=${bLng}&zoom=16`, '_blank')}
+                        sx={{ borderRadius: 0, py: 0.5, fontSize: 11 }}
+                      >
+                        Open buyer location
+                      </Button>
+                    </Box>
+                  )}
+
+                  {/* Action buttons */}
+                  {o.status === 'pending' && (
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+                      <Button
+                        size="small" fullWidth variant="contained" color="success"
+                        disabled={updatingId === o.id}
+                        onClick={() => handleStatus(o.id, 'accepted')}
+                      >
+                        {updatingId === o.id ? <CircularProgress size={16} /> : 'Accept'}
+                      </Button>
+                      <Button
+                        size="small" fullWidth variant="outlined" color="error"
+                        disabled={updatingId === o.id}
+                        onClick={() => handleStatus(o.id, 'rejected')}
+                      >
+                        Reject
+                      </Button>
+                    </Box>
+                  )}
+                  {o.status === 'accepted' && (
+                    <Button
+                      size="small" fullWidth variant="contained" sx={{ mt: 1.5 }}
+                      disabled={updatingId === o.id}
+                      onClick={() => handleStatus(o.id, 'completed')}
+                    >
+                      {updatingId === o.id ? <CircularProgress size={16} /> : 'Mark as Completed'}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
+    </Box>
+  );
+}
+
 // ─── Main MerchantPage ────────────────────────────────────────────────────────
 export default function MerchantPage() {
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
+  const [activeTab, setActiveTab] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -310,7 +476,17 @@ export default function MerchantPage() {
 
         {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
 
-        <Grid container spacing={2} sx={{ mb: 3 }}>
+        {/* Tabs */}
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
+          <Tab label="My Products" icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
+          <Tab label="Orders" icon={<ListAltRounded fontSize="small" />} iconPosition="start" />
+        </Tabs>
+
+        {/* Orders Tab */}
+        {activeTab === 1 && <OrdersTab />}
+
+        {/* Products Tab */}
+        {activeTab === 0 && <><Grid container spacing={2} sx={{ mb: 3 }}>
           {[
             { label: 'Total Products', value: stats.total_products || 0, icon: <InventoryRounded />, color: '#1D9E75' },
             { label: 'Active Listings', value: stats.active_products || 0, icon: <CheckCircleRounded />, color: '#1D9E75' },
@@ -379,6 +555,7 @@ export default function MerchantPage() {
           </Grid>
         )}
       </Box>
+      </> }
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth
         PaperProps={{ sx: { borderRadius: 3 } }}>

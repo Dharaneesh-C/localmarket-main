@@ -11,6 +11,7 @@ from routes.merchant import router as merchant_router
 from routes.buyer import router as buyer_router
 from routes.products import router as products_router
 from routes.notifications import router as notifications_router
+from routes.orders import router as orders_router
 
 
 @asynccontextmanager
@@ -49,6 +50,7 @@ app.include_router(merchant_router, prefix="/api/merchant", tags=["Merchant"])
 app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyer"])
 app.include_router(products_router, prefix="/api/products", tags=["Products"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(orders_router, prefix="/api/orders", tags=["Orders"])
 
 
 @app.get("/")

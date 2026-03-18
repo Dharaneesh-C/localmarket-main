@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Grid, Card, CardContent, Typography, Button,
   Chip, TextField, InputAdornment, CircularProgress, Alert,
-  Dialog, DialogTitle, DialogContent, IconButton, Divider, Fade,
+  Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
+  Divider, Fade, Tab, Tabs, Badge, TextField as MuiTextField,
 } from '@mui/material';
 import {
   SearchRounded, LocationOnRounded, CloseRounded,
-  DirectionsRounded, StorefrontRounded, RefreshRounded, CategoryRounded,
+  DirectionsRounded, StorefrontRounded, RefreshRounded,
+  ShoppingCartRounded, ListAltRounded, AddRounded, RemoveRounded,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -14,7 +16,7 @@ import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { getNearbyProducts } from '../utils/api';
+import { getNearbyProducts, placeOrder, getMyOrders } from '../utils/api';
 
 // Fix leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -45,6 +47,182 @@ const getCategoryEmoji = (cat) => {
   return map[cat] || '📦';
 };
 
+const statusColor = { pending: 'warning', accepted: 'success', rejected: 'error', completed: 'success' };
+const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected: '❌ Rejected', completed: '🎉 Completed' };
+
+// ─── Order Dialog ─────────────────────────────────────────────────────────────
+function OrderDialog({ product, userLocation, onClose, onSuccess }) {
+  const [quantity, setQuantity] = useState(1);
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const totalPrice = parseFloat((product.price * quantity).toFixed(2));
+
+  const handleOrder = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await placeOrder({
+        product_id: product.id,
+        product_title: product.title,
+        quantity,
+        unit: product.unit,
+        total_price: totalPrice,
+        merchant_id: product.merchant_id,
+        merchant_name: product.merchant_name,
+        buyer_location: userLocation
+          ? { type: 'Point', coordinates: [userLocation[1], userLocation[0]] }
+          : null,
+        note: note.trim() || null,
+      });
+      onSuccess();
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to place order. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography fontWeight={700}>Place Order</Typography>
+        <IconButton onClick={onClose}><CloseRounded /></IconButton>
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ bgcolor: '#E1F5EE', borderRadius: 2, p: 2, mb: 2 }}>
+          <Typography fontWeight={600}>{product.title}</Typography>
+          <Typography variant="body2" color="text.secondary">by {product.merchant_name}</Typography>
+          <Typography variant="h6" color="primary" fontWeight={700} mt={0.5}>
+            ₹{product.price}/{product.unit}
+          </Typography>
+        </Box>
+
+        <Typography variant="subtitle2" fontWeight={600} mb={1}>Quantity</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <IconButton
+            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+            sx={{ border: '1px solid', borderColor: 'divider' }}
+          >
+            <RemoveRounded />
+          </IconButton>
+          <Typography variant="h6" fontWeight={700} sx={{ minWidth: 40, textAlign: 'center' }}>
+            {quantity}
+          </Typography>
+          <IconButton
+            onClick={() => setQuantity(quantity + 1)}
+            sx={{ border: '1px solid', borderColor: 'divider' }}
+          >
+            <AddRounded />
+          </IconButton>
+          <Typography variant="body2" color="text.secondary">{product.unit}</Typography>
+        </Box>
+
+        <TextField
+          label="Note to merchant (optional)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          fullWidth
+          multiline
+          rows={2}
+          placeholder="e.g. Please pack separately"
+          sx={{ mb: 2 }}
+        />
+
+        <Box sx={{ bgcolor: '#f5f5f5', borderRadius: 2, p: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2" color="text.secondary">Total</Typography>
+            <Typography variant="h6" fontWeight={700} color="primary">₹{totalPrice}</Typography>
+          </Box>
+          {userLocation && (
+            <Typography variant="caption" color="text.secondary">
+              📍 Your location will be shared with the merchant
+            </Typography>
+          )}
+        </Box>
+
+        {error && <Alert severity="error" sx={{ mt: 1.5 }}>{error}</Alert>}
+      </DialogContent>
+      <DialogActions sx={{ p: 2, gap: 1 }}>
+        <Button onClick={onClose} variant="outlined">Cancel</Button>
+        <Button
+          onClick={handleOrder}
+          variant="contained"
+          disabled={loading}
+          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <ShoppingCartRounded />}
+          fullWidth
+        >
+          {loading ? 'Placing...' : `Order — ₹${totalPrice}`}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── My Orders Tab ────────────────────────────────────────────────────────────
+function MyOrdersTab() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getMyOrders();
+      setOrders(res.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>;
+
+  if (orders.length === 0) return (
+    <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
+      <ListAltRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
+      <Typography variant="h6" color="text.secondary">No orders yet</Typography>
+      <Typography variant="body2" color="text.disabled">Your placed orders will appear here</Typography>
+    </Card>
+  );
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Button size="small" variant="outlined" onClick={load} sx={{ mb: 2 }}>Refresh</Button>
+      <Grid container spacing={2}>
+        {orders.map((o) => (
+          <Grid item xs={12} sm={6} key={o.id}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography fontWeight={600} noWrap sx={{ maxWidth: '60%' }}>{o.product_title}</Typography>
+                  <Chip
+                    label={statusLabel[o.status] || o.status}
+                    size="small"
+                    color={statusColor[o.status] || 'default'}
+                  />
+                </Box>
+                <Typography variant="body2" color="text.secondary">from {o.merchant_name}</Typography>
+                <Typography variant="body2" mt={0.5}>
+                  {o.quantity} {o.unit} × ₹{(o.total_price / o.quantity).toFixed(0)} = <strong>₹{o.total_price}</strong>
+                </Typography>
+                {o.note && <Typography variant="caption" color="text.secondary">Note: {o.note}</Typography>}
+                <Typography variant="caption" color="text.disabled" display="block" mt={0.5}>
+                  {new Date(o.created_at).toLocaleString()}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+}
+
+// ─── Main BuyerPage ───────────────────────────────────────────────────────────
 export default function BuyerPage() {
   const { saveLocation } = useAuth();
   const { notifications } = useNotifications();
@@ -54,7 +232,10 @@ export default function BuyerPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [orderProduct, setOrderProduct] = useState(null);
   const [locationError, setLocationError] = useState('');
+  const [activeTab, setActiveTab] = useState(0);
+  const [orderSuccess, setOrderSuccess] = useState('');
 
   const loadProducts = useCallback(async (lat, lng) => {
     setLoading(true);
@@ -86,7 +267,6 @@ export default function BuyerPage() {
     );
   }, [loadProducts, saveLocation]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (notifications.length > 0 && userLocation) {
       loadProducts(userLocation[0], userLocation[1]);
@@ -107,6 +287,13 @@ export default function BuyerPage() {
     window.open(`https://www.openstreetmap.org/directions?from=&to=${lat},${lng}`, '_blank');
   };
 
+  const handleOrderSuccess = () => {
+    setOrderProduct(null);
+    setSelectedProduct(null);
+    setOrderSuccess('Order placed! The merchant has been notified. 🎉');
+    setTimeout(() => setOrderSuccess(''), 5000);
+  };
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Navbar />
@@ -117,108 +304,129 @@ export default function BuyerPage() {
           <Typography variant="body2" color="text.secondary">Merchants selling in your area right now</Typography>
         </Box>
 
-        {locationError && <Alert severity="warning" sx={{ mb: 2 }}>{locationError}</Alert>}
+        {/* Tabs */}
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
+          <Tab label="Browse Products" icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
+          <Tab label="My Orders" icon={<ListAltRounded fontSize="small" />} iconPosition="start" />
+        </Tabs>
 
-        <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-          <TextField
-            placeholder="Search products, merchants, categories..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            fullWidth size="small"
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded color="action" /></InputAdornment> }}
-          />
-          <Button variant="outlined" startIcon={<RefreshRounded />}
-            onClick={() => userLocation && loadProducts(userLocation[0], userLocation[1])}>
-            Refresh
-          </Button>
-        </Box>
+        {/* ── Browse Tab ── */}
+        {activeTab === 0 && (
+          <>
+            {locationError && <Alert severity="warning" sx={{ mb: 2 }}>{locationError}</Alert>}
+            {orderSuccess && <Alert severity="success" sx={{ mb: 2 }}>{orderSuccess}</Alert>}
 
-        {userLocation && (
-          <Box sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e0e0e0', mb: 3 }}>
-            <MapContainer center={userLocation} zoom={14} style={{ width: '100%', height: '380px' }}>
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+              <TextField
+                placeholder="Search products, merchants, categories..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                fullWidth size="small"
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded color="action" /></InputAdornment> }}
               />
-              <RecenterMap center={userLocation} />
-              <Marker position={userLocation} icon={userIcon}>
-                <Popup><b>You are here</b></Popup>
-              </Marker>
-              {filtered.map((p) => {
-                const [lng, lat] = p.merchant_location.coordinates;
-                return (
-                  <Marker key={p.id} position={[lat, lng]} icon={merchantIcon}>
-                    <Popup>
-                      <Box sx={{ minWidth: 160 }}>
-                        <Typography fontWeight={600} fontSize={13}>{p.title}</Typography>
-                        <Typography fontSize={12} color="text.secondary">{p.merchant_name}</Typography>
-                        <Typography fontSize={13} fontWeight={700} color="primary.main">₹{p.price}/{p.unit}</Typography>
-                        <Typography fontSize={12} color="text.secondary">📍 {p.distance_km} km away</Typography>
-                        <Button size="small" variant="contained" fullWidth sx={{ mt: 1, fontSize: 11 }}
-                          onClick={() => setSelectedProduct(p)}>
-                          View Details
-                        </Button>
-                      </Box>
-                    </Popup>
+              <Button variant="outlined" startIcon={<RefreshRounded />}
+                onClick={() => userLocation && loadProducts(userLocation[0], userLocation[1])}>
+                Refresh
+              </Button>
+            </Box>
+
+            {userLocation && (
+              <Box sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e0e0e0', mb: 3 }}>
+                <MapContainer center={userLocation} zoom={14} style={{ width: '100%', height: '380px' }}>
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <RecenterMap center={userLocation} />
+                  <Marker position={userLocation} icon={userIcon}>
+                    <Popup><b>You are here</b></Popup>
                   </Marker>
-                );
-              })}
-            </MapContainer>
-          </Box>
+                  {filtered.map((p) => {
+                    const [lng, lat] = p.merchant_location.coordinates;
+                    return (
+                      <Marker key={p.id} position={[lat, lng]} icon={merchantIcon}>
+                        <Popup>
+                          <Box sx={{ minWidth: 160 }}>
+                            <Typography fontWeight={600} fontSize={13}>{p.title}</Typography>
+                            <Typography fontSize={12} color="text.secondary">{p.merchant_name}</Typography>
+                            <Typography fontSize={13} fontWeight={700} color="primary.main">₹{p.price}/{p.unit}</Typography>
+                            <Typography fontSize={12} color="text.secondary">📍 {p.distance_km} km away</Typography>
+                            <Button size="small" variant="contained" fullWidth sx={{ mt: 0.5, fontSize: 11 }}
+                              onClick={() => setOrderProduct(p)}>
+                              Order Now
+                            </Button>
+                          </Box>
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
+                </MapContainer>
+              </Box>
+            )}
+
+            {loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+            ) : filtered.length === 0 ? (
+              <Card sx={{ p: 5, textAlign: 'center' }}>
+                <StorefrontRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
+                <Typography variant="h6" color="text.secondary">No products found nearby</Typography>
+              </Card>
+            ) : (
+              <Grid container spacing={2}>
+                {filtered.map((p) => (
+                  <Grid item xs={12} sm={6} md={4} key={p.id}>
+                    <Fade in>
+                      <Card sx={{ cursor: 'pointer', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 } }}>
+                        {p.image_url ? (
+                          <Box component="img" src={p.image_url} alt={p.title}
+                            sx={{ width: '100%', height: 130, objectFit: 'cover' }}
+                            onError={(e) => { e.target.style.display = 'none'; }} />
+                        ) : (
+                          <Box sx={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            bgcolor: '#E1F5EE', fontSize: 38 }}>
+                            {getCategoryEmoji(p.category)}
+                          </Box>
+                        )}
+                        <CardContent>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Chip label={p.category} size="small" sx={{ bgcolor: '#E1F5EE', color: '#0F6E56', fontSize: 11 }} />
+                            <Typography variant="caption" color="text.secondary">📍 {p.distance_km} km</Typography>
+                          </Box>
+                          <Typography variant="subtitle1" fontWeight={600} noWrap>{p.title}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block" noWrap>{p.description}</Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                            <Typography variant="h6" color="primary" fontWeight={700}>
+                              ₹{p.price}
+                              <Typography component="span" variant="caption" color="text.secondary">/{p.unit}</Typography>
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">by {p.merchant_name}</Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+                            <Button size="small" variant="outlined" fullWidth
+                              onClick={() => setSelectedProduct(p)}>
+                              Details
+                            </Button>
+                            <Button size="small" variant="contained" fullWidth
+                              startIcon={<ShoppingCartRounded fontSize="small" />}
+                              onClick={() => setOrderProduct(p)}>
+                              Order
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Fade>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </>
         )}
 
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-        ) : filtered.length === 0 ? (
-          <Card sx={{ p: 5, textAlign: 'center' }}>
-            <StorefrontRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
-            <Typography variant="h6" color="text.secondary">No products found nearby</Typography>
-            <Typography variant="body2" color="text.disabled">
-              Check back later — merchants will notify you when they're in your area
-            </Typography>
-          </Card>
-        ) : (
-          <Grid container spacing={2}>
-            {filtered.map((p) => (
-              <Grid item xs={12} sm={6} md={4} key={p.id}>
-                <Fade in>
-                  <Card
-                    sx={{ cursor: 'pointer', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 } }}
-                    onClick={() => setSelectedProduct(p)}
-                  >
-                    {p.image_url ? (
-                      <Box component="img" src={p.image_url} alt={p.title}
-                        sx={{ width: '100%', height: 130, objectFit: 'cover' }}
-                        onError={(e) => { e.target.style.display = 'none'; }} />
-                    ) : (
-                      <Box sx={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        bgcolor: '#E1F5EE', fontSize: 38 }}>
-                        {getCategoryEmoji(p.category)}
-                      </Box>
-                    )}
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Chip label={p.category} size="small" sx={{ bgcolor: '#E1F5EE', color: '#0F6E56', fontSize: 11 }} />
-                        <Typography variant="caption" color="text.secondary">📍 {p.distance_km} km</Typography>
-                      </Box>
-                      <Typography variant="subtitle1" fontWeight={600} noWrap>{p.title}</Typography>
-                      <Typography variant="caption" color="text.secondary" display="block" noWrap>{p.description}</Typography>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
-                        <Typography variant="h6" color="primary" fontWeight={700}>
-                          ₹{p.price}
-                          <Typography component="span" variant="caption" color="text.secondary">/{p.unit}</Typography>
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">by {p.merchant_name}</Typography>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Fade>
-              </Grid>
-            ))}
-          </Grid>
-        )}
+        {/* ── My Orders Tab ── */}
+        {activeTab === 1 && <MyOrdersTab />}
       </Box>
 
+      {/* Product Detail Dialog */}
       <Dialog open={!!selectedProduct} onClose={() => setSelectedProduct(null)} maxWidth="sm" fullWidth
         PaperProps={{ sx: { borderRadius: 3 } }}>
         {selectedProduct && (
@@ -233,7 +441,7 @@ export default function BuyerPage() {
                   sx={{ width: '100%', borderRadius: 2, mb: 2, maxHeight: 200, objectFit: 'cover' }} />
               )}
               <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-                <Chip icon={<CategoryRounded />} label={selectedProduct.category} size="small" />
+                <Chip label={selectedProduct.category} size="small" />
                 <Chip label={`📍 ${selectedProduct.distance_km} km away`} size="small" color="primary" variant="outlined" />
               </Box>
               <Typography variant="body2" color="text.secondary" mb={2}>{selectedProduct.description}</Typography>
@@ -242,30 +450,37 @@ export default function BuyerPage() {
                 <Typography component="span" variant="body2" color="text.secondary"> per {selectedProduct.unit}</Typography>
               </Typography>
               <Divider sx={{ mb: 2 }} />
-              <Box sx={{ bgcolor: 'background.default', borderRadius: 2, p: 2 }}>
+              <Box sx={{ bgcolor: 'background.default', borderRadius: 2, p: 2, mb: 2 }}>
                 <Typography variant="subtitle2" fontWeight={600} mb={1}>Merchant Info</Typography>
                 <Typography variant="body2">👤 {selectedProduct.merchant_name}</Typography>
                 {selectedProduct.merchant_phone && (
                   <Typography variant="body2">📞 {selectedProduct.merchant_phone}</Typography>
                 )}
               </Box>
-              <Box sx={{ display: 'flex', gap: 1.5, mt: 2.5 }}>
-                <Button fullWidth variant="contained" startIcon={<DirectionsRounded />}
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <Button fullWidth variant="outlined" startIcon={<DirectionsRounded />}
                   onClick={() => openDirections(selectedProduct)}>
-                  Get Directions
+                  Directions
                 </Button>
-                <Button fullWidth variant="outlined" startIcon={<LocationOnRounded />}
-                  onClick={() => {
-                    const [lng, lat] = selectedProduct.merchant_location.coordinates;
-                    window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=16`, '_blank');
-                  }}>
-                  View on Map
+                <Button fullWidth variant="contained" startIcon={<ShoppingCartRounded />}
+                  onClick={() => { setSelectedProduct(null); setOrderProduct(selectedProduct); }}>
+                  Order Now
                 </Button>
               </Box>
             </DialogContent>
           </>
         )}
       </Dialog>
+
+      {/* Order Dialog */}
+      {orderProduct && (
+        <OrderDialog
+          product={orderProduct}
+          userLocation={userLocation}
+          onClose={() => setOrderProduct(null)}
+          onSuccess={handleOrderSuccess}
+        />
+      )}
     </Box>
   );
 }

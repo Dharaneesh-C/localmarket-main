@@ -99,6 +99,30 @@ class ProductResponse(BaseModel):
     distance_km: Optional[float] = None
 
 
+# ─── Orders ───────────────────────────────────────────
+class OrderStatus(str, Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+    completed = "completed"
+
+
+class OrderCreate(BaseModel):
+    product_id: str
+    product_title: str
+    quantity: float
+    unit: str
+    total_price: float
+    merchant_id: str
+    merchant_name: str
+    buyer_location: Optional[GeoLocation] = None
+    note: Optional[str] = None
+
+
+class OrderStatusUpdate(BaseModel):
+    status: OrderStatus
+
+
 # ─── Notifications ─────────────────────────────────────
 class NotificationPayload(BaseModel):
     type: str  # "new_product", "product_update"

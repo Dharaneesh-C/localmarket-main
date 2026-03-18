@@ -28,4 +28,10 @@ export const getMerchantDashboard = () => API.get('/merchant/dashboard');
 export const getNearbyMerchants = (lat, lng, radius = 5) =>
   API.get(`/buyer/nearby-merchants?lat=${lat}&lng=${lng}&radius_km=${radius}`);
 
+// Orders
+export const placeOrder = (data) => API.post('/orders/', data);
+export const getMyOrders = () => API.get('/orders/my-orders');
+export const getMerchantOrders = () => API.get('/orders/merchant-orders');
+export const updateOrderStatus = (orderId, status) => API.put(`/orders/${orderId}/status`, { status });
+
 export default API;
