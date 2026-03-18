@@ -3,12 +3,14 @@ import {
   Box, Grid, Card, CardContent, Typography, Button,
   Chip, TextField, InputAdornment, CircularProgress, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
-  Divider, Fade, Tab, Tabs,
+  Divider, Fade, Tab, Tabs, Select, MenuItem, FormControl,
+  InputLabel, Collapse,
 } from '@mui/material';
 import {
   SearchRounded, CloseRounded,
   DirectionsRounded, StorefrontRounded, RefreshRounded,
   ShoppingCartRounded, ListAltRounded, AddRounded, RemoveRounded,
+  FilterAltRounded, SortRounded, TuneRounded,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -45,6 +47,7 @@ function RecenterMap({ center }) {
 
 const CATEGORY_EMOJI = { 'Vegetables & Fruits': '🥦', Dairy: '🥛', 'Handmade Goods': '🧶', 'Cooked Food': '🍱', Other: '📦' };
 const getCategoryEmoji = (cat) => CATEGORY_EMOJI[cat] || '📦';
+const CATEGORIES = ['All', 'Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
 
 const statusColor = { pending: 'warning', accepted: 'success', rejected: 'error', completed: 'success' };
 const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected: '❌ Rejected', completed: '🎉 Completed' };
@@ -236,6 +239,11 @@ export default function BuyerPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [orderSuccess, setOrderSuccess] = useState('');
   const [alarmNotif, setAlarmNotif] = useState(null);
+  // Filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedMerchant, setSelectedMerchant] = useState('All');
+  const [sortBy, setSortBy] = useState('distance'); // distance | price_asc | price_desc
 
   const loadProducts = useCallback(async (lat, lng) => {
     setLoading(true);
@@ -286,12 +294,19 @@ export default function BuyerPage() {
 
   useEffect(() => {
     const q = search.toLowerCase();
-    setFiltered(products.filter(p =>
-      p.title.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q) ||
-      p.merchant_name.toLowerCase().includes(q)
-    ));
-  }, [search, products]);
+    let result = products.filter(p =>
+      (p.title.toLowerCase().includes(q) ||
+       p.category.toLowerCase().includes(q) ||
+       p.merchant_name.toLowerCase().includes(q))
+      && (selectedCategory === 'All' || p.category === selectedCategory)
+      && (selectedMerchant === 'All' || p.merchant_name === selectedMerchant)
+    );
+    // Sort
+    if (sortBy === 'distance') result.sort((a, b) => (a.distance_km || 0) - (b.distance_km || 0));
+    else if (sortBy === 'price_asc') result.sort((a, b) => a.price - b.price);
+    else if (sortBy === 'price_desc') result.sort((a, b) => b.price - a.price);
+    setFiltered(result);
+  }, [search, products, selectedCategory, selectedMerchant, sortBy]);
 
   const openDirections = (product) => {
     const [lng, lat] = product.merchant_location.coordinates;
@@ -358,18 +373,127 @@ export default function BuyerPage() {
             {locationError && <Alert severity="warning" sx={{ mb: 2 }}>{locationError}</Alert>}
             {orderSuccess && <Alert severity="success" sx={{ mb: 2 }}>{orderSuccess}</Alert>}
 
-            <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-              <TextField
-                placeholder="Search products, merchants, categories..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                fullWidth size="small"
-                InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded color="action" /></InputAdornment> }}
-              />
-              <Button variant="outlined" startIcon={<RefreshRounded />}
-                onClick={() => userLocation && loadProducts(userLocation[0], userLocation[1])}>
-                Refresh
-              </Button>
+            {/* Search + Filter bar */}
+            <Box sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                <TextField
+                  placeholder="Search products, merchants..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  fullWidth size="small"
+                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded color="action" /></InputAdornment> }}
+                />
+                <Button
+                  variant="outlined" size="small"
+                  startIcon={<TuneRounded />}
+                  onClick={() => setShowFilters(v => !v)}
+                  sx={{ whiteSpace: 'nowrap', minWidth: 100,
+                    ...(showFilters && { bgcolor: '#E1F5EE', borderColor: 'primary.main', color: 'primary.main' })
+                  }}
+                >
+                  Filters {(selectedCategory !== 'All' || selectedMerchant !== 'All' || sortBy !== 'distance') &&
+                    <Chip label={[selectedCategory !== 'All', selectedMerchant !== 'All', sortBy !== 'distance'].filter(Boolean).length}
+                      size="small" color="primary" sx={{ ml: 0.5, height: 18, fontSize: 10 }} />}
+                </Button>
+                <Button variant="outlined" size="small" startIcon={<RefreshRounded />}
+                  onClick={() => userLocation && loadProducts(userLocation[0], userLocation[1])}>
+                  Refresh
+                </Button>
+              </Box>
+
+              {/* Expandable filter panel */}
+              <Collapse in={showFilters}>
+                <Box sx={{ bgcolor: '#F5F7F6', borderRadius: 2, p: 2, mb: 1.5 }}>
+
+                  {/* Category filter chips */}
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" mb={1}>
+                    <FilterAltRounded sx={{ fontSize: 13, mr: 0.5, verticalAlign: 'middle' }} />
+                    CATEGORY
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                    {CATEGORIES.map((cat) => (
+                      <Chip
+                        key={cat}
+                        label={cat === 'All' ? '📦 All' : `${getCategoryEmoji(cat)} ${cat}`}
+                        size="small"
+                        onClick={() => setSelectedCategory(cat)}
+                        sx={{
+                          cursor: 'pointer',
+                          fontWeight: selectedCategory === cat ? 700 : 400,
+                          bgcolor: selectedCategory === cat ? '#1D9E75' : 'white',
+                          color: selectedCategory === cat ? 'white' : 'text.primary',
+                          border: '1px solid',
+                          borderColor: selectedCategory === cat ? '#1D9E75' : '#e0e0e0',
+                          '&:hover': { bgcolor: selectedCategory === cat ? '#0F6E56' : '#E1F5EE' },
+                        }}
+                      />
+                    ))}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {/* Merchant filter */}
+                    <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
+                      <InputLabel>Filter by Merchant</InputLabel>
+                      <Select
+                        value={selectedMerchant}
+                        label="Filter by Merchant"
+                        onChange={(e) => setSelectedMerchant(e.target.value)}
+                      >
+                        <MenuItem value="All">All Merchants</MenuItem>
+                        {[...new Set(products.map(p => p.merchant_name))].sort().map(name => (
+                          <MenuItem key={name} value={name}>
+                            🏪 {name} ({products.filter(p => p.merchant_name === name).length} items)
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    {/* Sort */}
+                    <FormControl size="small" sx={{ minWidth: 180, flex: 1 }}>
+                      <InputLabel><SortRounded sx={{ fontSize: 14, mr: 0.5 }} />Sort By</InputLabel>
+                      <Select
+                        value={sortBy}
+                        label="Sort By"
+                        onChange={(e) => setSortBy(e.target.value)}
+                      >
+                        <MenuItem value="distance">📍 Nearest First</MenuItem>
+                        <MenuItem value="price_asc">₹ Price: Low to High</MenuItem>
+                        <MenuItem value="price_desc">₹₹ Price: High to Low</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  {/* Active filters summary + clear */}
+                  {(selectedCategory !== 'All' || selectedMerchant !== 'All' || sortBy !== 'distance') && (
+                    <Box sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <Typography variant="caption" color="text.secondary">Active:</Typography>
+                      {selectedCategory !== 'All' && (
+                        <Chip label={selectedCategory} size="small" color="primary" variant="outlined"
+                          onDelete={() => setSelectedCategory('All')} />
+                      )}
+                      {selectedMerchant !== 'All' && (
+                        <Chip label={selectedMerchant} size="small" color="secondary" variant="outlined"
+                          onDelete={() => setSelectedMerchant('All')} />
+                      )}
+                      {sortBy !== 'distance' && (
+                        <Chip label={sortBy === 'price_asc' ? 'Price ↑' : 'Price ↓'} size="small" variant="outlined"
+                          onDelete={() => setSortBy('distance')} />
+                      )}
+                      <Button size="small" color="error" sx={{ fontSize: 11, py: 0 }}
+                        onClick={() => { setSelectedCategory('All'); setSelectedMerchant('All'); setSortBy('distance'); }}>
+                        Clear All
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              </Collapse>
+
+              {/* Result count */}
+              <Typography variant="caption" color="text.secondary">
+                Showing {filtered.length} of {products.length} products
+                {selectedCategory !== 'All' && ` in ${selectedCategory}`}
+                {selectedMerchant !== 'All' && ` from ${selectedMerchant}`}
+              </Typography>
             </Box>
 
             {userLocation && (
