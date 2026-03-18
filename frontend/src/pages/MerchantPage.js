@@ -385,7 +385,7 @@ export default function MerchantPage() {
         <DialogTitle fontWeight={700}>{editProduct ? 'Edit Product' : 'Post New Product'}</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ pt: 1 }}>
-            <Grid item xs={12} sm={8}>
+            <Grid item xs={12} sm={4}>
               <TextField label="Product Name *" value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })} fullWidth />
             </Grid>
