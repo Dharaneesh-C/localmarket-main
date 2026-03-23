@@ -69,8 +69,10 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = None
     delivery_area: DeliveryArea
     merchant_location: GeoLocation
-    stock: Optional[int] = None  # None = unlimited
-    delivery_time_minutes: Optional[int] = None  # e.g. 30
+    stock: Optional[int] = None
+    delivery_time_minutes: Optional[int] = None
+    available_from: Optional[str] = None   # "06:00" 24h format IST
+    available_until: Optional[str] = None  # "10:00" 24h format IST
 
 
 class ProductUpdate(BaseModel):
@@ -82,6 +84,8 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = None
     is_active: Optional[bool] = None
     stock: Optional[int] = None
+    available_from: Optional[str] = None
+    available_until: Optional[str] = None
 
 
 # ─── Ratings ───────────────────────────────────────────────────────

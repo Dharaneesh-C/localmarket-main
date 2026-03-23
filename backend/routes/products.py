@@ -84,6 +84,8 @@ def serialize_product(p, distance_km=None):
         "rating_avg": round(p.get("rating_avg", 0.0), 1),
         "rating_count": p.get("rating_count", 0),
         "delivery_time_minutes": p.get("delivery_time_minutes"),
+        "available_from": p.get("available_from"),
+        "available_until": p.get("available_until"),
         "merchant_upi_id": p.get("merchant_upi_id"),
         "created_at": p.get("created_at"),
         "distance_km": round(distance_km, 2) if distance_km is not None else None,
@@ -103,7 +105,9 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
         "merchant_phone": current_user.get("phone"),
         "merchant_upi_id": current_user.get("upi_id"),
         "is_active": True,
-        "stock": data.stock,  # None = unlimited
+        "stock": data.stock,
+        "available_from": data.available_from,
+        "available_until": data.available_until,  # None = unlimited
         "rating_avg": 0.0,
         "rating_count": 0,
         "created_at": datetime.utcnow().isoformat(),

@@ -23,6 +23,8 @@ import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavouri
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
 import LiveTrackingMap from '../components/LiveTrackingMap';
+import OrderChat from '../components/OrderChat';
+import BuyerDashboard from '../components/BuyerDashboard';
 import SettingsPage from './SettingsPage';
 import { useSettings } from '../context/SettingsContext';
 import { QRCodeSVG } from 'qrcode.react';
@@ -338,6 +340,11 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
                   <LiveTrackingMap order={o} buyerLocation={buyerLocation} />
                 )}
 
+                {/* 💬 Chat for active orders */}
+                {['pending', 'accepted'].includes(o.status) && (
+                  <OrderChat orderId={o.id} orderStatus={o.status} />
+                )}
+
                 {/* Repeat Order button */}
                 <Button
                   size="small" variant="outlined" fullWidth
@@ -413,11 +420,22 @@ export default function BuyerPage() {
   const [sortBy, setSortBy] = useState('distance'); // distance | price_asc | price_desc
   const [radius, setRadius] = useState(20); // km
   const [voiceLang, setVoiceLang] = useState('ta-IN'); // Tamil default
+  const [searchHistory, setSearchHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('nearsell_search_history') || '[]'); } catch { return []; }
+  });
+  const [showHistory, setShowHistory] = useState(false);
+
+  const saveSearchHistory = (term) => {
+    if (!term.trim()) return;
+    const updated = [term, ...searchHistory.filter(s => s !== term)].slice(0, 5);
+    setSearchHistory(updated);
+    localStorage.setItem('nearsell_search_history', JSON.stringify(updated));
+  };
 
   // Voice search
   const { listening, supported: voiceSupported, error: voiceError,
     startListening, stopListening } = useVoiceSearch({
-    onResult: (text) => setSearch(text),
+    onResult: (text) => { setSearch(text); saveSearchHistory(text); },
     language: voiceLang,
   });
 
@@ -559,10 +577,24 @@ export default function BuyerPage() {
 
       <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 }, mt: alarmNotif ? '140px' : 0 }}>
 
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h5" fontWeight={700}>{t('nearbyProducts')}</Typography>
-          <Typography variant="body2" color="text.secondary">{t('merchantsNearby')}</Typography>
-        </Box>
+        <BuyerDashboard
+          favourites={favourites}
+          onReorder={(order) => {
+            setReorderProduct({
+              id: order.product_id,
+              title: order.product_title,
+              price: order.total_price / order.quantity,
+              unit: order.unit,
+              merchant_id: order.merchant_id,
+              merchant_name: order.merchant_name,
+              sold_out: false,
+            });
+          }}
+          onViewFavourites={(merchantName) => {
+            if (merchantName) setSelectedMerchant(merchantName);
+            setShowFilters(true);
+          }}
+        />
 
         {/* Tabs */}
         <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
@@ -578,11 +610,14 @@ export default function BuyerPage() {
 
             {/* Search + Filter bar */}
             <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5, position: 'relative' }}>
                 <TextField
                   placeholder={listening ? '🎤 Listening...' : t('searchPlaceholder')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  onFocus={() => setShowHistory(true)}
+                  onBlur={() => setTimeout(() => setShowHistory(false), 200)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { saveSearchHistory(search); setShowHistory(false); } }}
                   fullWidth size="small"
                   sx={listening ? { '& .MuiOutlinedInput-root': { borderColor: '#FF6B35', boxShadow: '0 0 0 2px rgba(255,107,53,0.2)' } } : {}}
                   InputProps={{
@@ -641,6 +676,34 @@ export default function BuyerPage() {
                   Refresh
                 </Button>
               </Box>
+
+              {/* Recent search history chips */}
+              {showHistory && searchHistory.length > 0 && (
+                <Box sx={{
+                  position: 'absolute', zIndex: 100, left: 0, right: 0,
+                  bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
+                  borderRadius: 2, p: 1.5, boxShadow: 3, mt: 0.5,
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="caption" fontWeight={600} color="text.secondary">🕐 RECENT SEARCHES</Typography>
+                    <Button size="small" color="error" sx={{ fontSize: 10, py: 0, minWidth: 0 }}
+                      onClick={() => { setSearchHistory([]); localStorage.removeItem('nearsell_search_history'); }}>
+                      Clear
+                    </Button>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+                    {searchHistory.map(term => (
+                      <Chip
+                        key={term}
+                        label={term}
+                        size="small"
+                        onClick={() => { setSearch(term); setShowHistory(false); saveSearchHistory(term); }}
+                        sx={{ cursor: 'pointer', fontSize: 12 }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
 
               {/* Expandable filter panel */}
               <Collapse in={showFilters}>

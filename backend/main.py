@@ -15,6 +15,9 @@ from routes.orders import router as orders_router
 from routes.reviews import router as reviews_router
 from routes.admin import router as admin_router
 from routes.analytics import router as analytics_router
+from routes.chat import router as chat_router
+from routes.availability import router as availability_router
+from routes.bulk import router as bulk_router
 
 
 @asynccontextmanager
@@ -57,6 +60,9 @@ app.include_router(orders_router, prefix="/api/orders", tags=["Orders"])
 app.include_router(reviews_router, prefix="/api/reviews", tags=["Reviews"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(analytics_router, prefix="/api/merchant", tags=["Analytics"])
+app.include_router(chat_router, prefix="/api/orders", tags=["Chat"])
+app.include_router(availability_router, prefix="/api/products", tags=["Availability"])
+app.include_router(bulk_router, prefix="/api/products", tags=["Bulk"])
 
 
 @app.get("/")

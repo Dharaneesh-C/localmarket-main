@@ -20,6 +20,8 @@ import {
   getMerchantDashboard, getMerchantOrders, updateOrderStatus, merchantArrived,
 } from '../utils/api';
 import MerchantRouteMap from '../components/MerchantRouteMap';
+import OrderChat from '../components/OrderChat';
+import BulkUpload from '../components/BulkUpload';
 import MerchantProfilePage from './MerchantProfilePage';
 import MerchantAnalyticsPage from './MerchantAnalyticsPage';
 import SettingsPage from './SettingsPage';
@@ -46,7 +48,7 @@ const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected
 
 const IMGBB_API_KEY = process.env.REACT_APP_IMGBB_API_KEY || 'f4509acb17c6d5497685c228f5267be8';
 const CATEGORIES = ['Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
-const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '', stock: '', delivery_time_minutes: '' };
+const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '', stock: '', delivery_time_minutes: '', available_from: '', available_until: '' };
 
 // ─── Image Uploader ───────────────────────────────────────────────────────────
 function ImageUploader({ value, onChange }) {
@@ -276,6 +278,11 @@ function OrdersTab() {
                     </Box>
                   )}
 
+                  {/* 💬 Chat */}
+                  {['pending', 'accepted'].includes(o.status) && (
+                    <OrderChat orderId={o.id} orderStatus={o.status} />
+                  )}
+
                   {/* Action buttons */}
                   {o.status === 'pending' && (
                     <Box sx={{ display: 'flex', gap: 1 }}>
@@ -338,6 +345,7 @@ export default function MerchantPage() {
   const [showProfile, setShowProfile] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -466,6 +474,10 @@ export default function MerchantPage() {
               sx={{ color: '#378ADD', borderColor: '#378ADD' }}>
               {t('analytics')}
             </Button>
+            <Button variant="outlined" startIcon={<CloudUploadRounded />} onClick={() => setBulkOpen(true)}
+              sx={{ color: '#9B59B6', borderColor: '#9B59B6' }}>
+              Bulk Upload
+            </Button>
             <Button variant="contained" startIcon={<AddRounded />} onClick={handleOpenAdd} size="large">
               {t('postNewProduct')}
             </Button>
@@ -582,6 +594,13 @@ export default function MerchantPage() {
                           {p.rating_count > 0 && (
                             <Typography variant="caption" color="text.secondary">⭐ {p.rating_avg} ({p.rating_count})</Typography>
                           )}
+                          {(p.available_from || p.available_until) && (
+                            <Chip
+                              label={`⏰ ${p.available_from || '00:00'} – ${p.available_until || '23:59'}`}
+                              size="small"
+                              sx={{ fontSize: 9, bgcolor: '#E6F1FB', color: '#185FA5' }}
+                            />
+                          )}
                         </Box>
                         <Divider sx={{ my: 1.5 }} />
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -605,6 +624,22 @@ export default function MerchantPage() {
         )}
 
       </Box>
+
+      {/* Bulk Upload Dialog */}
+      <Dialog open={bulkOpen} onClose={() => setBulkOpen(false)} maxWidth="md" fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography fontWeight={700}>📦 Bulk Product Upload</Typography>
+          <IconButton onClick={() => setBulkOpen(false)}><CloseRounded /></IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <BulkUpload
+            merchantLocation={merchantLocation}
+            deliveryArea={deliveryArea}
+            onDone={() => { setBulkOpen(false); loadData(); }}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Add / Edit Product Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth
@@ -660,9 +695,29 @@ export default function MerchantPage() {
             <Grid item xs={12} sm={6}>
               <Box sx={{ bgcolor: '#F5F7F6', borderRadius: 2, p: 1.5, height: '100%', display: 'flex', alignItems: 'center' }}>
                 <Typography variant="caption" color="text.secondary">
-                  📦 Set a stock limit to auto-pause the product when it runs out. Leave empty for unlimited stock.
+                  📦 Stock auto-pauses when it runs out. Leave empty for unlimited.
                 </Typography>
               </Box>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Available From (IST, optional)"
+                type="time"
+                value={form.available_from}
+                onChange={(e) => setForm({ ...form, available_from: e.target.value })}
+                fullWidth InputLabelProps={{ shrink: true }}
+                helperText="e.g. 06:00 for morning milk"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Available Until (IST, optional)"
+                type="time"
+                value={form.available_until}
+                onChange={(e) => setForm({ ...form, available_until: e.target.value })}
+                fullWidth InputLabelProps={{ shrink: true }}
+                helperText="Product auto-pauses after this time"
+              />
             </Grid>
             <Grid item xs={12}>
               <ImageUploader

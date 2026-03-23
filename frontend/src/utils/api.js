@@ -87,4 +87,14 @@ export const getAdminBuyers = () => API.get('/admin/buyers');
 export const getAdminOrders = () => API.get('/admin/orders');
 export const getAdminRevenueChart = () => API.get('/admin/revenue-chart');
 
+// Order Chat
+export const sendMessage = (orderId, text) => API.post(`/orders/${orderId}/messages`, { text });
+export const getMessages = (orderId) => API.get(`/orders/${orderId}/messages`);
+
+// Availability window check
+export const checkAvailability = () => API.post('/products/check-availability');
+
+// Bulk upload
+export const bulkUploadProducts = (products) => API.post('/products/bulk-upload', products);
+
 export default API;
