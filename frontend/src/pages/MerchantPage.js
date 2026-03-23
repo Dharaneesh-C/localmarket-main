@@ -474,10 +474,32 @@ export default function MerchantPage() {
         {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
 
         {/* Tabs */}
-        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-          <Tab label="My Products" icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
-          <Tab label="Orders" icon={<ListAltRounded fontSize="small" />} iconPosition="start" />
-        </Tabs>
+        {(() => {
+          const pendingCount = orders.filter(o => o.status === 'pending').length;
+          return (
+            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
+              <Tab label="My Products" icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
+              <Tab
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                    Orders
+                    {pendingCount > 0 && (
+                      <Box sx={{
+                        bgcolor: '#FF6B35', color: 'white',
+                        borderRadius: '10px', fontSize: 10,
+                        fontWeight: 700, px: 0.8, py: 0.1, lineHeight: 1.6,
+                      }}>
+                        {pendingCount}
+                      </Box>
+                    )}
+                  </Box>
+                }
+                icon={<ListAltRounded fontSize="small" />}
+                iconPosition="start"
+              />
+            </Tabs>
+          );
+        })()}
 
         {/* ── Orders Tab ── */}
         {activeTab === 1 && <OrdersTab />}

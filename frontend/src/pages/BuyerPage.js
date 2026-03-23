@@ -20,7 +20,7 @@ import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment } from '../utils/api';
+import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses } from '../utils/api';
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
 import LiveTrackingMap from '../components/LiveTrackingMap';
@@ -65,8 +65,23 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddress, setSelectedAddress] = useState(null); // null = live GPS
+  const ADDR_ICONS = { Home: '🏠', Work: '💼', 'வீடு': '🏠', 'வேலை': '💼' };
+
+  useEffect(() => {
+    getAddresses().then(r => setSavedAddresses(r.data || [])).catch(() => {});
+  }, []);
 
   const totalPrice = parseFloat((product.price * quantity).toFixed(2));
+
+  const getBuyerLocation = () => {
+    if (selectedAddress)
+      return { type: 'Point', coordinates: [selectedAddress.lng, selectedAddress.lat] };
+    return userLocation
+      ? { type: 'Point', coordinates: [userLocation[1], userLocation[0]] }
+      : null;
+  };
 
   const handleOrder = async () => {
     setLoading(true);
@@ -81,9 +96,7 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
         merchant_id: product.merchant_id,
         merchant_name: product.merchant_name,
         merchant_upi_id: product.merchant_upi_id || null,
-        buyer_location: userLocation
-          ? { type: 'Point', coordinates: [userLocation[1], userLocation[0]] }
-          : null,
+        buyer_location: getBuyerLocation(),
         note: note.trim() || null,
       });
       onSuccess();
@@ -101,6 +114,8 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
         <IconButton onClick={onClose}><CloseRounded /></IconButton>
       </DialogTitle>
       <DialogContent>
+
+        {/* Product summary */}
         <Box sx={{ bgcolor: '#E1F5EE', borderRadius: 2, p: 2, mb: 2 }}>
           <Typography fontWeight={600}>{product.title}</Typography>
           <Typography variant="body2" color="text.secondary">by {product.merchant_name}</Typography>
@@ -109,60 +124,81 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
           </Typography>
         </Box>
 
+        {/* Quantity */}
         <Typography variant="subtitle2" fontWeight={600} mb={1}>Quantity</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <IconButton
-            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-            sx={{ border: '1px solid', borderColor: 'divider' }}
-          >
+          <IconButton onClick={() => setQuantity(Math.max(1, quantity - 1))}
+            sx={{ border: '1px solid', borderColor: 'divider' }}>
             <RemoveRounded />
           </IconButton>
           <Typography variant="h6" fontWeight={700} sx={{ minWidth: 40, textAlign: 'center' }}>
             {quantity}
           </Typography>
-          <IconButton
-            onClick={() => setQuantity(quantity + 1)}
-            sx={{ border: '1px solid', borderColor: 'divider' }}
-          >
+          <IconButton onClick={() => setQuantity(quantity + 1)}
+            sx={{ border: '1px solid', borderColor: 'divider' }}>
             <AddRounded />
           </IconButton>
           <Typography variant="body2" color="text.secondary">{product.unit}</Typography>
         </Box>
 
-        <TextField
-          label="Note to merchant (optional)"
-          value={note}
+        {/* Delivery location picker */}
+        <Typography variant="subtitle2" fontWeight={600} mb={1}>📍 Delivery Location</Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8, mb: 2 }}>
+          <Box onClick={() => setSelectedAddress(null)} sx={{
+            p: 1.5, borderRadius: 2, cursor: 'pointer', border: '2px solid',
+            borderColor: selectedAddress === null ? 'primary.main' : 'divider',
+            bgcolor: selectedAddress === null ? '#E1F5EE' : 'transparent',
+          }}>
+            <Typography variant="body2" fontWeight={600}>📱 Current GPS location</Typography>
+            {userLocation && (
+              <Typography variant="caption" color="text.secondary">
+                {userLocation[0].toFixed(4)}, {userLocation[1].toFixed(4)}
+              </Typography>
+            )}
+          </Box>
+          {savedAddresses.map(a => (
+            <Box key={a.id} onClick={() => setSelectedAddress(a)} sx={{
+              p: 1.5, borderRadius: 2, cursor: 'pointer', border: '2px solid',
+              borderColor: selectedAddress?.id === a.id ? 'primary.main' : 'divider',
+              bgcolor: selectedAddress?.id === a.id ? '#E1F5EE' : 'transparent',
+            }}>
+              <Typography variant="body2" fontWeight={600}>
+                {ADDR_ICONS[a.label] || '📍'} {a.label}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {a.address_text}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+
+        {/* Note */}
+        <TextField label="Note to merchant (optional)" value={note}
           onChange={(e) => setNote(e.target.value)}
-          fullWidth
-          multiline
-          rows={2}
-          placeholder="e.g. Please pack separately"
-          sx={{ mb: 2 }}
+          fullWidth multiline rows={2}
+          placeholder="e.g. Please pack separately" sx={{ mb: 2 }}
         />
 
+        {/* Total */}
         <Box sx={{ bgcolor: '#f5f5f5', borderRadius: 2, p: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
             <Typography variant="body2" color="text.secondary">Total</Typography>
             <Typography variant="h6" fontWeight={700} color="primary">₹{totalPrice}</Typography>
           </Box>
-          {userLocation && (
-            <Typography variant="caption" color="text.secondary">
-              📍 Your location will be shared with the merchant
-            </Typography>
-          )}
+          <Typography variant="caption" color="text.secondary">
+            {selectedAddress
+              ? `🏠 Delivering to: ${selectedAddress.label}`
+              : '📱 Using current GPS location'}
+          </Typography>
         </Box>
 
         {error && <Alert severity="error" sx={{ mt: 1.5 }}>{error}</Alert>}
       </DialogContent>
       <DialogActions sx={{ p: 2, gap: 1 }}>
         <Button onClick={onClose} variant="outlined">Cancel</Button>
-        <Button
-          onClick={handleOrder}
-          variant="contained"
-          disabled={loading}
+        <Button onClick={handleOrder} variant="contained" disabled={loading}
           startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <ShoppingCartRounded />}
-          fullWidth
-        >
+          fullWidth>
           {loading ? 'Placing...' : `Order — ₹${totalPrice}`}
         </Button>
       </DialogActions>
@@ -783,62 +819,64 @@ export default function BuyerPage() {
                             {getCategoryEmoji(p.category)}
                           </Box>
                         )}
-                        <CardContent>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                            <Chip label={p.category} size="small" sx={{ bgcolor: '#E1F5EE', color: '#0F6E56', fontSize: 11 }} />
-                            <Typography variant="caption" color="text.secondary">📍 {p.distance_km} km</Typography>
-                          </Box>
-                          <Typography variant="subtitle1" fontWeight={600} noWrap>{p.title}</Typography>
-                          <Typography variant="caption" color="text.secondary" display="block" noWrap>{p.description}</Typography>
-
-                          {/* Rating */}
-                          {p.rating_count > 0 && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                              <Rating value={p.rating_avg} precision={0.1} size="small" readOnly />
-                              <Typography variant="caption" color="text.secondary">({p.rating_count})</Typography>
-                            </Box>
-                          )}
-
-                          {/* Stock badge */}
-                          {p.stock !== null && p.stock !== undefined && (
-                            <Chip
-                              label={p.sold_out ? 'Sold Out' : `${p.stock} left`}
-                              size="small"
-                              sx={{ mt: 0.5, fontSize: 10,
-                                bgcolor: p.sold_out ? '#ffebee' : '#E1F5EE',
-                                color: p.sold_out ? '#c62828' : '#0F6E56',
-                              }}
-                            />
-                          )}
-
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                            <Typography variant="h6" color="primary" fontWeight={700}>
-                              ₹{p.price}
-                              <Typography component="span" variant="caption" color="text.secondary">/{p.unit}</Typography>
-                            </Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              {p.delivery_time_minutes && (
-                                <Chip label={`⏱ ${p.delivery_time_minutes}m`} size="small"
-                                  sx={{ fontSize: 10, bgcolor: '#E1F5EE', color: '#0F6E56' }} />
-                              )}
-                              <IconButton
-                                size="small"
+                        <CardContent sx={{ pb: '12px !important' }}>
+                          {/* Top row: category + distance + fav */}
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                            <Chip label={p.category} size="small" sx={{ bgcolor: '#E1F5EE', color: '#0F6E56', fontSize: 10 }} />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                              <Typography variant="caption" color="text.secondary">📍 {p.distance_km}km</Typography>
+                              <IconButton size="small"
                                 onClick={(e) => { e.stopPropagation(); handleToggleFavourite(p.merchant_id, p.merchant_name); }}
-                                sx={{ color: isFavourite(p.merchant_id) ? '#e53935' : 'text.disabled' }}
-                              >
-                                {isFavourite(p.merchant_id)
-                                  ? <FavoriteRounded fontSize="small" />
-                                  : <FavoriteBorderRounded fontSize="small" />}
+                                sx={{ color: isFavourite(p.merchant_id) ? '#e53935' : 'text.disabled', p: 0.3 }}>
+                                {isFavourite(p.merchant_id) ? <FavoriteRounded sx={{ fontSize: 16 }} /> : <FavoriteBorderRounded sx={{ fontSize: 16 }} />}
                               </IconButton>
                             </Box>
                           </Box>
-                          <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+
+                          {/* Title */}
+                          <Typography variant="subtitle1" fontWeight={700} noWrap>{p.title}</Typography>
+
+                          {/* Merchant + rating on same row */}
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.3 }}>
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: '55%' }}>
+                              by {p.merchant_name}
+                            </Typography>
+                            {p.rating_count > 0 && (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                                <Typography variant="caption" color="#EF9F27" fontWeight={700}>⭐ {p.rating_avg}</Typography>
+                                <Typography variant="caption" color="text.disabled">({p.rating_count})</Typography>
+                              </Box>
+                            )}
+                          </Box>
+
+                          {/* Price row */}
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
+                            <Typography variant="h6" color="primary" fontWeight={700} lineHeight={1}>
+                              ₹{p.price}
+                              <Typography component="span" variant="caption" color="text.secondary">/{p.unit}</Typography>
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              {p.delivery_time_minutes && (
+                                <Chip label={`⏱${p.delivery_time_minutes}m`} size="small"
+                                  sx={{ fontSize: 9, height: 18, bgcolor: '#E1F5EE', color: '#0F6E56' }} />
+                              )}
+                              {p.sold_out && (
+                                <Chip label="Sold Out" size="small"
+                                  sx={{ fontSize: 9, height: 18, bgcolor: '#ffebee', color: '#c62828' }} />
+                              )}
+                            </Box>
+                          </Box>
+
+                          {/* Buttons */}
+                          <Box sx={{ display: 'flex', gap: 1, mt: 1.2 }}>
                             <Button size="small" variant="outlined" fullWidth
+                              sx={{ py: 0.5, fontSize: 12 }}
                               onClick={() => setSelectedProduct(p)}>
                               {t('details')}
                             </Button>
                             <Button size="small" variant="contained" fullWidth
-                              startIcon={<ShoppingCartRounded fontSize="small" />}
+                              sx={{ py: 0.5, fontSize: 12 }}
+                              startIcon={<ShoppingCartRounded sx={{ fontSize: '14px !important' }} />}
                               onClick={() => setOrderProduct(p)}
                               disabled={p.sold_out}>
                               {p.sold_out ? t('soldOut') : t('order')}
