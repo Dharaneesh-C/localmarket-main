@@ -181,6 +181,63 @@ async def merchant_arrived(
     return {"message": "Buyer has been alerted"}
 
 
+# ─── Merchant: Update live location while delivering ────────────────────────
+@router.put("/{order_id}/location")
+async def put_merchant_location(
+    order_id: str,
+    lat: float,
+    lng: float,
+    current_user=Depends(require_merchant)
+):
+    db = get_db()
+    order_ref = db.collection("orders").document(order_id)
+    order = order_ref.get()
+    if not order.exists:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order_data = order.to_dict()
+    if order_data.get("merchant_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+    if order_data.get("status") != "accepted":
+        raise HTTPException(status_code=400, detail="Order must be accepted")
+
+    order_ref.update({
+        "merchant_live_lat": lat,
+        "merchant_live_lng": lng,
+        "merchant_location_updated_at": datetime.utcnow().isoformat(),
+    })
+    return {"message": "Location updated"}
+
+
+# ─── Buyer: Get merchant live location for accepted order ─────────────────────
+@router.get("/{order_id}/merchant-location")
+async def get_merchant_live_location(
+    order_id: str,
+    current_user=Depends(require_buyer)
+):
+    db = get_db()
+    order = db.collection("orders").document(order_id).get()
+    if not order.exists:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order_data = order.to_dict()
+    if order_data.get("buyer_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+
+    lat = order_data.get("merchant_live_lat")
+    lng = order_data.get("merchant_live_lng")
+    updated_at = order_data.get("merchant_location_updated_at")
+
+    if lat is None or lng is None:
+        return {"available": False}
+
+    return {
+        "available": True,
+        "lat": lat,
+        "lng": lng,
+        "updated_at": updated_at,
+        "status": order_data.get("status"),
+    }
+
+
 # ─── Buyer: Confirm Cash on Delivery payment ─────────────────────────────────
 @router.post("/{order_id}/confirm-payment")
 async def confirm_payment(order_id: str, current_user=Depends(require_buyer)):

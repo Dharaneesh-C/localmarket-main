@@ -54,6 +54,12 @@ export const getFavourites = () => API.get('/auth/favourites');
 // COD
 export const confirmPayment = (orderId) => API.post(`/orders/${orderId}/confirm-payment`);
 
+// Live Location Tracking
+export const updateMerchantLiveLocation = (orderId, lat, lng) =>
+  API.put(`/orders/${orderId}/location?lat=${lat}&lng=${lng}`);
+export const getMerchantLiveLocation = (orderId) =>
+  API.get(`/orders/${orderId}/merchant-location`);
+
 // Merchant Analytics
 export const getMerchantAnalytics = () => API.get('/merchant/analytics');
 

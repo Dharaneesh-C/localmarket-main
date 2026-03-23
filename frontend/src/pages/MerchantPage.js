@@ -21,6 +21,7 @@ import {
 } from '../utils/api';
 import MerchantProfilePage from './MerchantProfilePage';
 import MerchantAnalyticsPage from './MerchantAnalyticsPage';
+import { useLiveLocationBroadcast } from '../hooks/useLiveLocationBroadcast';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
 
@@ -145,6 +146,10 @@ function OrdersTab() {
   const [arrivedId, setArrivedId] = useState(null);
   const [arrivedSuccess, setArrivedSuccess] = useState('');
 
+  // Find first accepted order — broadcast live location for it
+  const acceptedOrder = orders.find(o => o.status === 'accepted');
+  useLiveLocationBroadcast(acceptedOrder?.id, !!acceptedOrder);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -205,6 +210,12 @@ function OrdersTab() {
         <Button size="small" variant="outlined" onClick={load}>Refresh</Button>
       </Box>
       {arrivedSuccess && <Alert severity="success" sx={{ mb: 2 }}>{arrivedSuccess}</Alert>}
+              {acceptedOrder && (
+                <Alert severity="info" sx={{ mb: 2 }}
+                  icon={<Box sx={{ fontSize: 16 }}>📡</Box>}>
+                  <strong>Live tracking active</strong> — Your location is being shared with the buyer every 10 seconds.
+                </Alert>
+              )}
       <Grid container spacing={2}>
         {orders.map((o) => {
           const buyerLoc = o.buyer_location;

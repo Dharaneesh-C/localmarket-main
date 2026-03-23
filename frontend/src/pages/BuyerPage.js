@@ -12,6 +12,7 @@ import {
   ShoppingCartRounded, ListAltRounded, AddRounded, RemoveRounded,
   FilterAltRounded, SortRounded, TuneRounded,
   FavoriteRounded, FavoriteBorderRounded, RepeatRounded, PaymentsRounded,
+  MicRounded, MicOffRounded,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -21,6 +22,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment } from '../utils/api';
 import { stopAlarm } from '../utils/alarm';
+import { useVoiceSearch } from '../hooks/useVoiceSearch';
+import LiveTrackingMap from '../components/LiveTrackingMap';
 
 // Fix leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -220,7 +223,7 @@ function ReviewForm({ order, onDone }) {
 }
 
 // ─── My Orders Tab ────────────────────────────────────────────────────────────
-function MyOrdersTab({ onReorder }) {
+function MyOrdersTab({ onReorder, buyerLocation }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviewed, setReviewed] = useState({});
@@ -281,6 +284,12 @@ function MyOrdersTab({ onReorder }) {
                 <Typography variant="caption" color="text.disabled" display="block" mt={0.5}>
                   {new Date(o.created_at).toLocaleString()}
                 </Typography>
+
+                {/* 📡 Live tracking map for accepted orders */}
+                {o.status === 'accepted' && (
+                  <LiveTrackingMap order={o} buyerLocation={buyerLocation} />
+                )}
+
                 {/* Repeat Order button */}
                 <Button
                   size="small" variant="outlined" fullWidth
@@ -347,6 +356,14 @@ export default function BuyerPage() {
   const [selectedMerchant, setSelectedMerchant] = useState('All');
   const [sortBy, setSortBy] = useState('distance'); // distance | price_asc | price_desc
   const [radius, setRadius] = useState(20); // km
+  const [voiceLang, setVoiceLang] = useState('ta-IN'); // Tamil default
+
+  // Voice search
+  const { listening, supported: voiceSupported, error: voiceError,
+    startListening, stopListening } = useVoiceSearch({
+    onResult: (text) => setSearch(text),
+    language: voiceLang,
+  });
 
   const loadProducts = useCallback(async (lat, lng, r) => {
     setLoading(true);
@@ -491,12 +508,50 @@ export default function BuyerPage() {
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
                 <TextField
-                  placeholder="Search products, merchants..."
+                  placeholder={listening ? '🎤 Listening...' : 'Search products, merchants...'}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   fullWidth size="small"
-                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchRounded color="action" /></InputAdornment> }}
+                  sx={listening ? { '& .MuiOutlinedInput-root': { borderColor: '#FF6B35', boxShadow: '0 0 0 2px rgba(255,107,53,0.2)' } } : {}}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchRounded color="action" />
+                      </InputAdornment>
+                    ),
+                    endAdornment: voiceSupported ? (
+                      <InputAdornment position="end">
+                        {/* Language toggle */}
+                        <Chip
+                          label={voiceLang === 'ta-IN' ? '🇭🇳 த' : '🇦🇳 EN'}
+                          size="small"
+                          onClick={() => setVoiceLang(v => v === 'ta-IN' ? 'en-IN' : 'ta-IN')}
+                          sx={{ mr: 0.5, fontSize: 10, cursor: 'pointer', height: 20 }}
+                        />
+                        {/* Mic button */}
+                        <IconButton
+                          size="small"
+                          onClick={listening ? stopListening : startListening}
+                          sx={{
+                            color: listening ? '#FF6B35' : 'text.secondary',
+                            animation: listening ? 'micPulse 1s ease-in-out infinite' : 'none',
+                            '@keyframes micPulse': {
+                              '0%,100%': { transform: 'scale(1)' },
+                              '50%': { transform: 'scale(1.2)' },
+                            },
+                          }}
+                        >
+                          {listening ? <MicRounded /> : <MicOffRounded />}
+                        </IconButton>
+                      </InputAdornment>
+                    ) : null,
+                  }}
                 />
+                {voiceError && (
+                  <Typography variant="caption" color="error" sx={{ position: 'absolute', mt: 5, zIndex: 1 }}>
+                    {voiceError}
+                  </Typography>
+                )}
                 <Button
                   variant="outlined" size="small"
                   startIcon={<TuneRounded />}
@@ -756,6 +811,7 @@ export default function BuyerPage() {
         {/* ── My Orders Tab ── */}
         {activeTab === 1 && (
           <MyOrdersTab
+            buyerLocation={userLocation}
             onReorder={(order) => {
               // Build a product-like object from the past order for OrderDialog
               setReorderProduct({
