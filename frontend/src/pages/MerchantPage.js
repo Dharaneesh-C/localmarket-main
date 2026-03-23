@@ -19,6 +19,7 @@ import {
   createProduct, getMyProducts, updateProduct, deleteProduct,
   getMerchantDashboard, getMerchantOrders, updateOrderStatus, merchantArrived,
 } from '../utils/api';
+import MerchantProfilePage from './MerchantProfilePage';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
 
@@ -40,7 +41,7 @@ const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected
 
 const IMGBB_API_KEY = process.env.REACT_APP_IMGBB_API_KEY || 'f4509acb17c6d5497685c228f5267be8';
 const CATEGORIES = ['Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
-const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '', stock: '' };
+const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '', stock: '', delivery_time_minutes: '' };
 
 // ─── Image Uploader ───────────────────────────────────────────────────────────
 function ImageUploader({ value, onChange }) {
@@ -318,6 +319,7 @@ export default function MerchantPage() {
   const [stats, setStats] = useState({});
   const [orders, setOrders] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -423,6 +425,10 @@ export default function MerchantPage() {
     </Box>
   );
 
+  if (showProfile) {
+    return <MerchantProfilePage onBack={() => setShowProfile(false)} />;
+  }
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Navbar />
@@ -434,9 +440,14 @@ export default function MerchantPage() {
             <Typography variant="h5" fontWeight={700}>Welcome, {user?.name} 👋</Typography>
             <Typography variant="body2" color="text.secondary">Manage your products and reach buyers nearby</Typography>
           </Box>
-          <Button variant="contained" startIcon={<AddRounded />} onClick={handleOpenAdd} size="large">
-            Post New Product
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button variant="outlined" startIcon={<StorefrontRounded />} onClick={() => setShowProfile(true)}>
+              My Profile
+            </Button>
+            <Button variant="contained" startIcon={<AddRounded />} onClick={handleOpenAdd} size="large">
+              Post New Product
+            </Button>
+          </Box>
         </Box>
 
         {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
@@ -695,6 +706,17 @@ export default function MerchantPage() {
             <Grid item xs={12}>
               <TextField label="Description" value={form.description} multiline rows={2}
                 onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Delivery Time (minutes, optional)"
+                type="number"
+                value={form.delivery_time_minutes}
+                onChange={(e) => setForm({ ...form, delivery_time_minutes: e.target.value })}
+                fullWidth
+                placeholder="e.g. 30"
+                inputProps={{ min: 1 }}
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField

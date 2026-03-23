@@ -11,6 +11,7 @@ import {
   DirectionsRounded, StorefrontRounded, RefreshRounded,
   ShoppingCartRounded, ListAltRounded, AddRounded, RemoveRounded,
   FilterAltRounded, SortRounded, TuneRounded,
+  FavoriteRounded, FavoriteBorderRounded, RepeatRounded, PaymentsRounded,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -18,7 +19,7 @@ import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { getNearbyProducts, placeOrder, getMyOrders, submitReview } from '../utils/api';
+import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment } from '../utils/api';
 import { stopAlarm } from '../utils/alarm';
 
 // Fix leaflet icons
@@ -219,10 +220,11 @@ function ReviewForm({ order, onDone }) {
 }
 
 // ─── My Orders Tab ────────────────────────────────────────────────────────────
-function MyOrdersTab() {
+function MyOrdersTab({ onReorder }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviewed, setReviewed] = useState({});
+  const [confirmedPayments, setConfirmedPayments] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -237,6 +239,13 @@ function MyOrdersTab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleConfirmPayment = async (orderId) => {
+    try {
+      await confirmPayment(orderId);
+      setConfirmedPayments(p => ({ ...p, [orderId]: true }));
+    } catch (e) { console.error(e); }
+  };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>;
 
@@ -272,6 +281,31 @@ function MyOrdersTab() {
                 <Typography variant="caption" color="text.disabled" display="block" mt={0.5}>
                   {new Date(o.created_at).toLocaleString()}
                 </Typography>
+                {/* Repeat Order button */}
+                <Button
+                  size="small" variant="outlined" fullWidth
+                  startIcon={<RepeatRounded />}
+                  sx={{ mt: 1 }}
+                  onClick={() => onReorder(o)}
+                >
+                  Repeat Order
+                </Button>
+
+                {/* COD Confirmation */}
+                {o.status === 'completed' && !o.payment_confirmed && !confirmedPayments[o.id] && (
+                  <Button
+                    size="small" variant="contained" fullWidth
+                    startIcon={<PaymentsRounded />}
+                    sx={{ mt: 1, bgcolor: '#1D9E75' }}
+                    onClick={() => handleConfirmPayment(o.id)}
+                  >
+                    💵 Confirm Cash Payment
+                  </Button>
+                )}
+                {(o.payment_confirmed || confirmedPayments[o.id]) && (
+                  <Alert severity="success" sx={{ mt: 1, py: 0.5 }}>💵 Cash payment confirmed</Alert>
+                )}
+
                 {/* Review form for completed orders */}
                 {o.status === 'completed' && !reviewed[o.id] && (
                   <ReviewForm order={o} onDone={() => setReviewed(r => ({...r, [o.id]: true}))} />
@@ -299,10 +333,14 @@ export default function BuyerPage() {
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [orderProduct, setOrderProduct] = useState(null);
+  const [reorderProduct, setReorderProduct] = useState(null);
   const [locationError, setLocationError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
   const [orderSuccess, setOrderSuccess] = useState('');
   const [alarmNotif, setAlarmNotif] = useState(null);
+  const [favourites, setFavourites] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('favourites') || '[]'); } catch { return []; }
+  });
   // Filters
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -356,6 +394,17 @@ export default function BuyerPage() {
     stopAlarm();
     setAlarmNotif(null);
   };
+
+  const handleToggleFavourite = async (merchant_id, merchant_name) => {
+    try {
+      const res = await toggleFavourite({ merchant_id, merchant_name });
+      const updated = res.data.favourites || [];
+      setFavourites(updated);
+      localStorage.setItem('favourites', JSON.stringify(updated));
+    } catch (e) { console.error(e); }
+  };
+
+  const isFavourite = (merchant_id) => favourites.some(f => f.merchant_id === merchant_id);
 
   useEffect(() => {
     const q = search.toLowerCase();
@@ -666,7 +715,21 @@ export default function BuyerPage() {
                               ₹{p.price}
                               <Typography component="span" variant="caption" color="text.secondary">/{p.unit}</Typography>
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">by {p.merchant_name}</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              {p.delivery_time_minutes && (
+                                <Chip label={`⏱ ${p.delivery_time_minutes}m`} size="small"
+                                  sx={{ fontSize: 10, bgcolor: '#E1F5EE', color: '#0F6E56' }} />
+                              )}
+                              <IconButton
+                                size="small"
+                                onClick={(e) => { e.stopPropagation(); handleToggleFavourite(p.merchant_id, p.merchant_name); }}
+                                sx={{ color: isFavourite(p.merchant_id) ? '#e53935' : 'text.disabled' }}
+                              >
+                                {isFavourite(p.merchant_id)
+                                  ? <FavoriteRounded fontSize="small" />
+                                  : <FavoriteBorderRounded fontSize="small" />}
+                              </IconButton>
+                            </Box>
                           </Box>
                           <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
                             <Button size="small" variant="outlined" fullWidth
@@ -691,7 +754,23 @@ export default function BuyerPage() {
         )}
 
         {/* ── My Orders Tab ── */}
-        {activeTab === 1 && <MyOrdersTab />}
+        {activeTab === 1 && (
+          <MyOrdersTab
+            onReorder={(order) => {
+              // Build a product-like object from the past order for OrderDialog
+              setReorderProduct({
+                id: order.product_id,
+                title: order.product_title,
+                price: order.total_price / order.quantity,
+                unit: order.unit,
+                merchant_id: order.merchant_id,
+                merchant_name: order.merchant_name,
+                sold_out: false,
+              });
+              setActiveTab(0); // switch to browse tab
+            }}
+          />
+        )}
       </Box>
 
       {/* Product Detail Dialog */}
@@ -747,6 +826,20 @@ export default function BuyerPage() {
           userLocation={userLocation}
           onClose={() => setOrderProduct(null)}
           onSuccess={handleOrderSuccess}
+        />
+      )}
+
+      {/* Repeat Order Dialog */}
+      {reorderProduct && (
+        <OrderDialog
+          product={reorderProduct}
+          userLocation={userLocation}
+          onClose={() => setReorderProduct(null)}
+          onSuccess={() => {
+            setReorderProduct(null);
+            setOrderSuccess('Repeat order placed! 🎉');
+            setTimeout(() => setOrderSuccess(''), 5000);
+          }}
         />
       )}
     </Box>

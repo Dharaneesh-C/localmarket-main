@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from auth_utils import get_current_user, require_merchant, require_buyer
 from firebase_db import get_db
 from routes.notifications import store_notification
-from schemas import OrderCreate, OrderStatusUpdate
+from schemas import OrderCreate, OrderStatusUpdate, CODConfirm
 
 router = APIRouter()
 
@@ -179,3 +179,30 @@ async def merchant_arrived(
     store_notification(order_data["buyer_id"], notification)
 
     return {"message": "Buyer has been alerted"}
+
+
+# ─── Buyer: Confirm Cash on Delivery payment ─────────────────────────────────
+@router.post("/{order_id}/confirm-payment")
+async def confirm_payment(order_id: str, current_user=Depends(require_buyer)):
+    db = get_db()
+    order_ref = db.collection("orders").document(order_id)
+    order = order_ref.get()
+    if not order.exists:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order_data = order.to_dict()
+    if order_data.get("buyer_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+    if order_data.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Order must be completed first")
+
+    order_ref.update({"payment_confirmed": True, "payment_confirmed_at": datetime.utcnow().isoformat()})
+
+    # Notify merchant
+    notification = {
+        "type": "payment_confirmed",
+        "order_id": order_id,
+        "title": f"💵 Payment confirmed!",
+        "body": f"{current_user['name']} confirmed cash payment for {order_data.get('product_title')}",
+    }
+    store_notification(order_data["merchant_id"], notification)
+    return {"message": "Payment confirmed"}

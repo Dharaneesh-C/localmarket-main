@@ -79,10 +79,11 @@ def serialize_product(p, distance_km=None):
         "merchant_location": p["merchant_location"],
         "delivery_area": p.get("delivery_area"),
         "is_active": p.get("is_active", True),
-        "stock": stock,  # None = unlimited
+        "stock": stock,
         "sold_out": stock is not None and stock <= 0,
         "rating_avg": round(p.get("rating_avg", 0.0), 1),
         "rating_count": p.get("rating_count", 0),
+        "delivery_time_minutes": p.get("delivery_time_minutes"),
         "created_at": p.get("created_at"),
         "distance_km": round(distance_km, 2) if distance_km is not None else None,
     }

@@ -70,6 +70,7 @@ class ProductCreate(BaseModel):
     delivery_area: DeliveryArea
     merchant_location: GeoLocation
     stock: Optional[int] = None  # None = unlimited
+    delivery_time_minutes: Optional[int] = None  # e.g. 30
 
 
 class ProductUpdate(BaseModel):
@@ -132,6 +133,25 @@ class OrderCreate(BaseModel):
 
 class OrderStatusUpdate(BaseModel):
     status: OrderStatus
+
+
+# ─── Merchant Profile ────────────────────────────────────────────────────────
+class MerchantProfileUpdate(BaseModel):
+    bio: Optional[str] = None
+    photo_url: Optional[str] = None
+    working_hours: Optional[str] = None  # e.g. "Mon-Sat 8AM-8PM"
+    delivery_time_minutes: Optional[int] = None  # e.g. 30
+
+
+# ─── Favourites ───────────────────────────────────────────────────────────────
+class ToggleFavourite(BaseModel):
+    merchant_id: str
+    merchant_name: str
+
+
+# ─── COD Confirmation ─────────────────────────────────────────────────────────
+class CODConfirm(BaseModel):
+    order_id: str
 
 
 # ─── Notifications ─────────────────────────────────────

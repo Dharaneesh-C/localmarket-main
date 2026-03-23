@@ -43,4 +43,15 @@ export const getMerchantReviews = (merchantId) => API.get(`/reviews/merchant/${m
 // Merchant revenue history
 export const getMerchantOrderHistory = () => API.get('/orders/merchant-orders');
 
+// Merchant profile
+export const updateMerchantProfile = (data) => API.put('/auth/merchant-profile', data);
+export const getMerchantProfile = (merchantId) => API.get(`/auth/merchant/${merchantId}`);
+
+// Favourites
+export const toggleFavourite = (data) => API.post('/auth/favourites/toggle', data);
+export const getFavourites = () => API.get('/auth/favourites');
+
+// COD
+export const confirmPayment = (orderId) => API.post(`/orders/${orderId}/confirm-payment`);
+
 export default API;
