@@ -91,7 +91,7 @@ export default function BulkUpload({ merchantLocation, deliveryArea, onDone }) {
         merchant_location: merchantLocation,
         delivery_area: deliveryArea,
       }));
-      const res = await bulkUploadProducts(products);
+      const res = await bulkUploadProducts({ products });
       setResult(res.data);
       setPreview([]);
       setFileName('');
