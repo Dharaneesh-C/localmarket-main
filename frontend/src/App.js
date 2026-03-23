@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, createTheme } from '@mui/material';
-import { SnackbarProvider } from 'notistack';
+import { SnackbarProvider, useSnackbar } from 'notistack';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider } from './context/SettingsContext';
@@ -78,6 +78,23 @@ function buildTheme(dark) {
   });
 }
 
+// Listens for api-error DOM events fired by the Axios interceptor
+function ToastListener() {
+  const { enqueueSnackbar } = useSnackbar();
+  useEffect(() => {
+    const handler = (e) => {
+      enqueueSnackbar(e.detail.message, {
+        variant: 'error',
+        autoHideDuration: 4000,
+        preventDuplicate: true,
+      });
+    };
+    window.addEventListener('api-error', handler);
+    return () => window.removeEventListener('api-error', handler);
+  }, [enqueueSnackbar]);
+  return null;
+}
+
 function ProtectedRoute({ children, requiredRole }) {
   const { user, loading } = useAuth();
   if (loading) return (
@@ -128,7 +145,9 @@ export default function App() {
     <SettingsProvider onThemeChange={setDarkMode}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <SnackbarProvider maxSnack={3} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+        <SnackbarProvider maxSnack={3} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          dense hideIconVariant={false}>
+          <ToastListener />
           <BrowserRouter>
             <AuthProvider>
               <NotificationProvider>

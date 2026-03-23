@@ -22,6 +22,7 @@ import {
 import MerchantRouteMap from '../components/MerchantRouteMap';
 import OrderChat from '../components/OrderChat';
 import BulkUpload from '../components/BulkUpload';
+import { OrderCardSkeleton, StatCardsSkeleton } from '../components/Skeletons';
 import MerchantProfilePage from './MerchantProfilePage';
 import MerchantAnalyticsPage from './MerchantAnalyticsPage';
 import SettingsPage from './SettingsPage';
@@ -194,11 +195,7 @@ function OrdersTab() {
     }
   };
 
-  if (loading) return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-      <CircularProgress />
-    </Box>
-  );
+  if (loading) return <Box sx={{ mt: 2 }}><OrderCardSkeleton count={4} /></Box>;
 
   if (orders.length === 0) return (
     <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
@@ -446,8 +443,9 @@ export default function MerchantPage() {
   };
 
   if (pageLoading) return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-      <CircularProgress />
+    <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 } }}>
+      <StatCardsSkeleton />
+      <OrderCardSkeleton count={3} />
     </Box>
   );
 
@@ -569,6 +567,7 @@ export default function MerchantPage() {
                     <Card>
                       {p.image_url && (
                         <Box component="img" src={p.image_url} alt={p.title}
+                          loading="lazy"
                           sx={{ width: '100%', height: 140, objectFit: 'cover' }}
                           onError={(e) => { e.target.style.display = 'none'; }} />
                       )}

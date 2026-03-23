@@ -9,14 +9,36 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto logout on 401 token expiry
+// Global response interceptor — 401 logout + toast error events
 API.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+
+    // 401 — token expired, force logout
+    if (status === 401) {
       localStorage.removeItem('token');
       window.location.href = '/';
+      return Promise.reject(error);
     }
+
+    // Don't toast on cancelled requests, background polls, or silent calls
+    if (error.code === 'ERR_CANCELED') return Promise.reject(error);
+    if (error.config?.silent) return Promise.reject(error);
+
+    // Derive a human-readable message
+    const detail = error.response?.data?.detail;
+    const message =
+      typeof detail === 'string' ? detail
+      : status === 404 ? 'Resource not found'
+      : status === 403 ? 'You don\'t have permission to do that'
+      : status === 500 ? 'Server error — please try again'
+      : status === 0 || !status ? 'Network error — check your connection'
+      : `Request failed (${status})`;
+
+    // Fire a custom DOM event — picked up by ToastListener in App.js
+    window.dispatchEvent(new CustomEvent('api-error', { detail: { message } }));
+
     return Promise.reject(error);
   }
 );
@@ -73,9 +95,9 @@ export const deleteAddress = (id) => API.delete(`/auth/addresses/${id}`);
 
 // Live Location Tracking
 export const updateMerchantLiveLocation = (orderId, lat, lng) =>
-  API.put(`/orders/${orderId}/location?lat=${lat}&lng=${lng}`);
+  API.put(`/orders/${orderId}/location?lat=${lat}&lng=${lng}`, {}, { silent: true });
 export const getMerchantLiveLocation = (orderId) =>
-  API.get(`/orders/${orderId}/merchant-location`);
+  API.get(`/orders/${orderId}/merchant-location`, { silent: true });
 
 // Merchant Analytics
 export const getMerchantAnalytics = () => API.get('/merchant/analytics');

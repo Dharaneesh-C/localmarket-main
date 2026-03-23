@@ -25,6 +25,7 @@ import { useVoiceSearch } from '../hooks/useVoiceSearch';
 import LiveTrackingMap from '../components/LiveTrackingMap';
 import OrderChat from '../components/OrderChat';
 import BuyerDashboard from '../components/BuyerDashboard';
+import { ProductGridSkeleton, OrderCardSkeleton } from '../components/Skeletons';
 import SettingsPage from './SettingsPage';
 import { useSettings } from '../context/SettingsContext';
 import { QRCodeSVG } from 'qrcode.react';
@@ -35,6 +36,7 @@ const CATEGORIES = ['All', 'Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Co
 
 const statusColor = { pending: 'warning', accepted: 'success', rejected: 'error', completed: 'success' };
 const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected: '❌ Rejected', completed: '🎉 Completed' };
+const PAGE_SIZE = 12;
 
 // ─── Order Dialog ─────────────────────────────────────────────────────────────
 function OrderDialog({ product, userLocation, onClose, onSuccess }) {
@@ -300,7 +302,7 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
     } catch (e) { console.error(e); }
   };
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>;
+  if (loading) return <Box sx={{ mt: 2 }}><OrderCardSkeleton count={4} /></Box>;
 
   if (orders.length === 0) return (
     <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
@@ -414,6 +416,7 @@ export default function BuyerPage() {
     try { return JSON.parse(localStorage.getItem('favourites') || '[]'); } catch { return []; }
   });
   // Filters
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedMerchant, setSelectedMerchant] = useState('All');
@@ -525,7 +528,8 @@ export default function BuyerPage() {
     else if (sortBy === 'price_asc') result.sort((a, b) => a.price - b.price);
     else if (sortBy === 'price_desc') result.sort((a, b) => b.price - a.price);
     setFiltered(result);
-  }, [search, products, selectedCategory, selectedMerchant, sortBy]);
+    setVisibleCount(PAGE_SIZE); // reset pagination on filter change
+  }, [search, products, selectedCategory, selectedMerchant, sortBy]); // eslint-disable-line
 
   const openDirections = (product) => {
     const [lng, lat] = product.merchant_location.coordinates;
@@ -839,20 +843,22 @@ export default function BuyerPage() {
             )}
 
             {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+              <ProductGridSkeleton count={6} />
             ) : filtered.length === 0 ? (
               <Card sx={{ p: 5, textAlign: 'center' }}>
                 <StorefrontRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
                 <Typography variant="h6" color="text.secondary">No products found nearby</Typography>
               </Card>
             ) : (
+              <>
               <Grid container spacing={2}>
-                {filtered.map((p) => (
+                {filtered.slice(0, visibleCount).map((p) => (
                   <Grid item xs={12} sm={6} md={4} key={p.id}>
                     <Fade in>
                       <Card sx={{ cursor: 'pointer', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 } }}>
                         {p.image_url ? (
                           <Box component="img" src={p.image_url} alt={p.title}
+                            loading="lazy"
                             sx={{ width: '100%', height: 130, objectFit: 'cover' }}
                             onError={(e) => { e.target.style.display = 'none'; }} />
                         ) : (
@@ -930,6 +936,22 @@ export default function BuyerPage() {
                   </Grid>
                 ))}
               </Grid>
+              {/* Load More */}
+              {visibleCount < filtered.length && (
+                <Box sx={{ textAlign: 'center', mt: 3 }}>
+                  <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+                    Showing {visibleCount} of {filtered.length} products
+                  </Typography>
+                  <Button
+                    variant="outlined" size="large"
+                    onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
+                    sx={{ minWidth: 180 }}
+                  >
+                    Load More ({Math.min(PAGE_SIZE, filtered.length - visibleCount)} more)
+                  </Button>
+                </Box>
+              )}
+              </>
             )}
           </>
         )}
@@ -967,6 +989,7 @@ export default function BuyerPage() {
             <DialogContent>
               {selectedProduct.image_url && (
                 <Box component="img" src={selectedProduct.image_url} alt={selectedProduct.title}
+                  loading="lazy"
                   sx={{ width: '100%', borderRadius: 2, mb: 2, maxHeight: 200, objectFit: 'cover' }} />
               )}
               <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
