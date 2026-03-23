@@ -321,7 +321,7 @@ export default function BuyerPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [radius]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
