@@ -4,17 +4,70 @@ from auth_utils import get_current_user
 from collections import defaultdict
 from datetime import datetime, timedelta
 import json
+import uuid
+import bcrypt
 
 router = APIRouter()
 
 # Add your admin email — must match the email used to register on NearSell
-ADMIN_EMAILS = ["dharaneesh04@gmail.com"]
+ADMIN_EMAILS = [
+    "dharaneesh04@gmail.com",
+    "dharineeshdharineesh54@gmail.com",
+]
+
+# ─── Admin credentials to auto-seed ──────────────────────────────────────────
+_SEED_EMAIL    = "dharineeshdharineesh54@gmail.com"
+_SEED_PASSWORD = "dharangayou@04"
+_SEED_NAME     = "Admin"
 
 
 def require_admin(current_user=Depends(get_current_user)):
     if current_user.get("email") not in ADMIN_EMAILS:
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+# ─── One-time seed endpoint — creates admin account if not exists ─────────────
+@router.post("/seed")
+async def seed_admin():
+    """
+    Call this ONCE to create the admin account in Firestore.
+    POST https://nearsell-backend.vercel.app/api/admin/seed
+    Safe to call multiple times — idempotent (updates password if user exists).
+    """
+    db = get_db()
+    hashed = bcrypt.hashpw(_SEED_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    existing = db.collection("users").where("email", "==", _SEED_EMAIL).get()
+
+    if existing:
+        user_id = existing[0].id
+        db.collection("users").document(user_id).update({"password": hashed})
+        return {
+            "status": "updated",
+            "message": f"Admin account password updated for {_SEED_EMAIL}",
+            "user_id": user_id,
+        }
+
+    user_id = str(uuid.uuid4())
+    db.collection("users").document(user_id).set({
+        "id": user_id,
+        "name": _SEED_NAME,
+        "email": _SEED_EMAIL,
+        "password": hashed,
+        "role": "buyer",   # role=buyer allows login; admin access is email-based
+        "phone": None,
+        "location": None,
+        "fcm_token": None,
+        "favourites": [],
+        "created_at": datetime.utcnow().isoformat(),
+    })
+
+    return {
+        "status": "created",
+        "message": f"Admin account created for {_SEED_EMAIL}",
+        "user_id": user_id,
+    }
 
 
 # ─── Admin: Full Dashboard Summary ───────────────────────────────────────────
@@ -109,7 +162,6 @@ async def admin_buyers(current_user=Depends(require_admin)):
 async def admin_orders(current_user=Depends(require_admin)):
     db = get_db()
     orders = [o.to_dict() for o in db.collection("orders").get()]
-    # Unflatten buyer_location
     for o in orders:
         if isinstance(o.get("buyer_location"), str):
             try:
@@ -127,7 +179,6 @@ async def admin_revenue_chart(current_user=Depends(require_admin)):
     orders = [o.to_dict() for o in db.collection("orders").get()]
     completed = [o for o in orders if o.get("status") == "completed" and o.get("created_at")]
 
-    # Group by date (last 30 days)
     daily = defaultdict(float)
     today = datetime.utcnow().date()
     for i in range(30):
