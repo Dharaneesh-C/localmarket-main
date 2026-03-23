@@ -5,7 +5,7 @@ import {
   Divider, Chip, LinearProgress,
 } from '@mui/material';
 import {
-  Visibility, VisibilityOff, StorefrontRounded, PeopleRounded,
+  Visibility, VisibilityOff, StorefrontRounded,
   PhoneRounded, PersonRounded, EmailRounded, LockRounded,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
