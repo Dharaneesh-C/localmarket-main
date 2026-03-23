@@ -385,11 +385,15 @@ export default function MerchantPage() {
     setEditProduct(product);
     setForm({
       title: product.title,
-      description: product.description,
+      description: product.description || '',
       price: product.price,
       unit: product.unit,
       category: product.category,
       image_url: product.image_url || '',
+      stock: product.stock ?? '',
+      delivery_time_minutes: product.delivery_time_minutes ?? '',
+      available_from: product.available_from || '',
+      available_until: product.available_until || '',
     });
     setDialogOpen(true);
   };

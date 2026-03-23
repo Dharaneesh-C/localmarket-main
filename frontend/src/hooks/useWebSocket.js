@@ -16,32 +16,34 @@ function usePolling(userId, onMessage) {
   const lastCheckRef = useRef(Date.now());
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) return; // don't poll when logged out
 
     const poll = async () => {
       try {
         const since = lastCheckRef.current;
         lastCheckRef.current = Date.now();
+        const token = localStorage.getItem('token');
+        if (!token) return; // logged out — stop polling
         const res = await fetch(
-          `${getBaseUrl()}/api/notifications/poll?user_id=${userId}&since=${since}`,
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
-          }
+          `${getBaseUrl()}/api/notifications/poll?since=${since}`,
+          { headers: { Authorization: `Bearer ${token}` } }
         );
+        if (res.status === 401) {
+          // Token expired — the Axios interceptor handles this on next API call
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
-          if (data && data.length > 0) {
+          if (Array.isArray(data) && data.length > 0) {
             data.forEach((msg) => onMessage(msg));
           }
         }
       } catch (e) {
-        // Silently ignore poll errors
+        // Silently ignore poll errors — network blips are expected
       }
     };
 
-    intervalRef.current = setInterval(poll, 10000); // Poll every 10 seconds
+    intervalRef.current = setInterval(poll, 8000); // Poll every 8s (server rate-limits to 4s min)
     return () => clearInterval(intervalRef.current);
   }, [userId, onMessage]);
 

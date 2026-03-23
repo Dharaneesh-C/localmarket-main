@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box, Card, CardContent, Typography, CircularProgress,
-  Grid, Chip, Alert, Button, Avatar,
+  Box, Card, CardContent, Typography,
+  Grid, Chip, Alert, Button, Avatar, Skeleton,
 } from '@mui/material';
 import {
   TrendingUpRounded, ShoppingCartRounded, InventoryRounded,
@@ -46,7 +46,47 @@ export default function MerchantAnalyticsPage({ onBack }) {
   if (loading) return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Navbar />
-      <Box sx={{ display: 'flex', justifyContent: 'center', pt: 10 }}><CircularProgress /></Box>
+      <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 } }}>
+        {/* Header skeleton */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Box><Skeleton width={200} height={36} /><Skeleton width={160} height={20} /></Box>
+          <Skeleton variant="rounded" width={80} height={36} />
+        </Box>
+        {/* Stat cards skeleton */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Grid item xs={6} sm={4} md={2} key={i}>
+              <Card><CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Skeleton variant="circular" width={44} height={44} />
+                <Box sx={{ flex: 1 }}>
+                  <Skeleton width="60%" height={32} />
+                  <Skeleton width="80%" height={18} />
+                </Box>
+              </CardContent></Card>
+            </Grid>
+          ))}
+        </Grid>
+        {/* Chart skeleton */}
+        <Card sx={{ mb: 3 }}><CardContent>
+          <Skeleton width={200} height={28} sx={{ mb: 2 }} />
+          <Skeleton variant="rectangular" width="100%" height={260} sx={{ borderRadius: 2 }} />
+        </CardContent></Card>
+        {/* Two column skeletons */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[0, 1].map(i => (
+            <Grid item xs={12} md={6} key={i}>
+              <Card><CardContent>
+                <Skeleton width={180} height={28} sx={{ mb: 2 }} />
+                {Array.from({ length: 4 }).map((_, j) => (
+                  <Box key={j} sx={{ display: 'flex', justifyContent: 'space-between', py: 1 }}>
+                    <Skeleton width="55%" /><Skeleton width="25%" />
+                  </Box>
+                ))}
+              </CardContent></Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
     </Box>
   );
 
