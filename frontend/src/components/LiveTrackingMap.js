@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Typography, Chip, Alert, CircularProgress } from '@mui/material';
+import { Box, Typography, Chip, CircularProgress } from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { getMerchantLiveLocation } from '../utils/api';
