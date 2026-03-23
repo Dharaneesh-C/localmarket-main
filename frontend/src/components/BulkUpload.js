@@ -2,11 +2,11 @@ import React, { useState, useRef } from 'react';
 import {
   Box, Typography, Button, Alert, CircularProgress,
   Table, TableHead, TableRow, TableCell, TableBody,
-  Chip, Card, CardContent, IconButton,
+  Chip, Card, IconButton,
 } from '@mui/material';
 import {
   UploadFileRounded, DownloadRounded, CloseRounded,
-  CheckCircleRounded, ErrorRounded,
+  CheckCircleRounded,
 } from '@mui/icons-material';
 import { bulkUploadProducts } from '../utils/api';
 

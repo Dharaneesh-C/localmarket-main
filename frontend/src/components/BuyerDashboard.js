@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Typography, Card, CardContent, Avatar,
-  Chip, Button, CircularProgress, IconButton,
+  Chip, Button, CircularProgress,
 } from '@mui/material';
 import {
   WbSunnyRounded, NightsStayRounded, WbTwilightRounded,
-  RepeatRounded, FavoriteRounded, StorefrontRounded,
+  RepeatRounded, StorefrontRounded,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import { useSettings } from '../context/SettingsContext';
 import { getMyOrders } from '../utils/api';
 
 function getGreeting() {
@@ -35,7 +34,6 @@ function getWeatherTip() {
 
 export default function BuyerDashboard({ onReorder, onViewFavourites, favourites }) {
   const { user } = useAuth();
-  const { t } = useSettings();
   const [lastOrder, setLastOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const greeting = getGreeting();
