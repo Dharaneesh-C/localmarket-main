@@ -19,7 +19,8 @@
     "leaflet": "^1.9.4",
     "react-leaflet": "^4.2.1",
     "timeago.js": "^4.0.2",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "qrcode.react": "^3.1.0"
   },
   "scripts": {
     "start": "react-scripts start",

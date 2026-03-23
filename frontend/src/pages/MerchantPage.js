@@ -21,7 +21,9 @@ import {
 } from '../utils/api';
 import MerchantProfilePage from './MerchantProfilePage';
 import MerchantAnalyticsPage from './MerchantAnalyticsPage';
+import SettingsPage from './SettingsPage';
 import { useLiveLocationBroadcast } from '../hooks/useLiveLocationBroadcast';
+import { useSettings } from '../context/SettingsContext';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
 
@@ -330,9 +332,11 @@ export default function MerchantPage() {
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
   const [orders, setOrders] = useState([]);
+  const { t } = useSettings();
   const [activeTab, setActiveTab] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -440,28 +444,29 @@ export default function MerchantPage() {
 
   if (showProfile) return <MerchantProfilePage onBack={() => setShowProfile(false)} />;
   if (showAnalytics) return <MerchantAnalyticsPage onBack={() => setShowAnalytics(false)} />;
+  if (showSettings) return <SettingsPage onBack={() => setShowSettings(false)} />;
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Navbar />
+      <Navbar onOpenSettings={() => setShowSettings(true)} />
       <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 } }}>
 
         {/* Header */}
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
           <Box>
-            <Typography variant="h5" fontWeight={700}>Welcome, {user?.name} 👋</Typography>
-            <Typography variant="body2" color="text.secondary">Manage your products and reach buyers nearby</Typography>
+            <Typography variant="h5" fontWeight={700}>{t('welcomeMerchant')}, {user?.name} 👋</Typography>
+            <Typography variant="body2" color="text.secondary">{t('manageProducts')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button variant="outlined" startIcon={<StorefrontRounded />} onClick={() => setShowProfile(true)}>
-              My Profile
+              {t('myProfile')}
             </Button>
             <Button variant="outlined" startIcon={<BarChartRounded />} onClick={() => setShowAnalytics(true)}
               sx={{ color: '#378ADD', borderColor: '#378ADD' }}>
-              Analytics
+              {t('analytics')}
             </Button>
             <Button variant="contained" startIcon={<AddRounded />} onClick={handleOpenAdd} size="large">
-              Post New Product
+              {t('postNewProduct')}
             </Button>
           </Box>
         </Box>

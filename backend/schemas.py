@@ -127,6 +127,7 @@ class OrderCreate(BaseModel):
     total_price: float
     merchant_id: str
     merchant_name: str
+    merchant_upi_id: Optional[str] = None
     buyer_location: Optional[GeoLocation] = None
     note: Optional[str] = None
 
@@ -139,14 +140,23 @@ class OrderStatusUpdate(BaseModel):
 class MerchantProfileUpdate(BaseModel):
     bio: Optional[str] = None
     photo_url: Optional[str] = None
-    working_hours: Optional[str] = None  # e.g. "Mon-Sat 8AM-8PM"
-    delivery_time_minutes: Optional[int] = None  # e.g. 30
+    working_hours: Optional[str] = None
+    delivery_time_minutes: Optional[int] = None
+    upi_id: Optional[str] = None  # e.g. merchant@upi
 
 
 # ─── Favourites ───────────────────────────────────────────────────────────────
 class ToggleFavourite(BaseModel):
     merchant_id: str
     merchant_name: str
+
+
+# ─── Address Book ───────────────────────────────────────────────────────────────
+class SavedAddress(BaseModel):
+    label: str          # e.g. "Home", "Work"
+    address_text: str   # human readable
+    lat: float
+    lng: float
 
 
 # ─── COD Confirmation ─────────────────────────────────────────────────────────

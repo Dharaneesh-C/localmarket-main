@@ -46,6 +46,7 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
         "total_price": data.total_price,
         "merchant_id": data.merchant_id,
         "merchant_name": data.merchant_name,
+        "merchant_upi_id": data.merchant_upi_id,
         "buyer_id": current_user["id"],
         "buyer_name": current_user["name"],
         "buyer_phone": current_user.get("phone"),

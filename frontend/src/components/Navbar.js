@@ -2,21 +2,24 @@ import React, { useState } from 'react';
 import {
   AppBar, Toolbar, Typography, IconButton, Badge, Box,
   Drawer, List, ListItemButton, ListItemText, Divider, Avatar,
-  ListItemIcon, Chip,
+  ListItemIcon, Chip, Switch,
 } from '@mui/material';
 import {
   NotificationsRounded, LogoutRounded, StorefrontRounded,
   PeopleRounded, CloseRounded, FiberManualRecordRounded,
+  SettingsRounded, DarkModeRounded, LanguageRounded,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useSettings } from '../context/SettingsContext';
 import { format } from 'timeago.js';
 
-export default function Navbar() {
+export default function Navbar({ onOpenSettings }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
+  const { darkMode, toggleDarkMode, language, toggleLanguage, t } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
@@ -32,26 +35,22 @@ export default function Navbar() {
     <>
       <AppBar position="sticky" elevation={0}>
         <Toolbar sx={{ gap: 1 }}>
-          <Box
-            sx={{
-              width: 36, height: 36, borderRadius: 2,
-              background: 'linear-gradient(135deg, #1D9E75, #5DCAA5)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 1,
-            }}
-          >
+          <Box sx={{
+            width: 36, height: 36, borderRadius: 2,
+            background: 'linear-gradient(135deg, #1D9E75, #5DCAA5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 1,
+          }}>
             <StorefrontRounded sx={{ color: 'white', fontSize: 20 }} />
           </Box>
 
           <Typography variant="h6" fontWeight={700} color="primary.dark" sx={{ flexGrow: 1 }}>
-            LocalMart
+            NearSell
           </Typography>
 
           {user && (
             <Chip
               label={user.role === 'merchant' ? 'Merchant' : 'Buyer'}
-              size="small"
-              color="primary"
-              variant="outlined"
+              size="small" color="primary" variant="outlined"
               icon={user.role === 'merchant' ? <StorefrontRounded /> : <PeopleRounded />}
             />
           )}
@@ -61,6 +60,13 @@ export default function Navbar() {
               <Badge badgeContent={unreadCount} color="error">
                 <NotificationsRounded />
               </Badge>
+            </IconButton>
+          )}
+
+          {/* Settings icon */}
+          {onOpenSettings && (
+            <IconButton onClick={onOpenSettings}>
+              <SettingsRounded />
             </IconButton>
           )}
 
@@ -89,20 +95,13 @@ export default function Navbar() {
         ) : (
           <List disablePadding>
             {notifications.map((n) => (
-              <ListItemButton
-                key={n.id}
-                onClick={() => handleNotifClick(n)}
+              <ListItemButton key={n.id} onClick={() => handleNotifClick(n)}
                 sx={{
                   bgcolor: n.read ? 'transparent' : '#E8F5F0',
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  alignItems: 'flex-start',
-                  gap: 1,
-                }}
-              >
-                {!n.read && (
-                  <FiberManualRecordRounded sx={{ color: 'primary.main', fontSize: 10, mt: 1 }} />
-                )}
+                  borderBottom: '1px solid', borderColor: 'divider',
+                  alignItems: 'flex-start', gap: 1,
+                }}>
+                {!n.read && <FiberManualRecordRounded sx={{ color: 'primary.main', fontSize: 10, mt: 1 }} />}
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="body2" fontWeight={600}>{n.title}</Typography>
                   <Typography variant="caption" color="text.secondary">{n.body}</Typography>
@@ -132,9 +131,38 @@ export default function Navbar() {
         </Box>
         <Divider />
         <List>
+          {/* Dark Mode toggle */}
+          <ListItemButton onClick={toggleDarkMode}>
+            <ListItemIcon><DarkModeRounded /></ListItemIcon>
+            <ListItemText primary={t('darkMode')} />
+            <Switch checked={darkMode} size="small" color="primary" />
+          </ListItemButton>
+
+          {/* Language toggle */}
+          <ListItemButton onClick={toggleLanguage}>
+            <ListItemIcon><LanguageRounded /></ListItemIcon>
+            <ListItemText
+              primary={t('language')}
+              secondary={language === 'en' ? 'தமிழுக்கு மாறு' : 'Switch to English'}
+            />
+            <Chip
+              label={language === 'en' ? 'EN' : 'தமிழ்'}
+              size="small" color="primary" variant="outlined"
+            />
+          </ListItemButton>
+
+          {/* Settings page */}
+          {onOpenSettings && (
+            <ListItemButton onClick={() => { setDrawerOpen(false); onOpenSettings(); }}>
+              <ListItemIcon><SettingsRounded /></ListItemIcon>
+              <ListItemText primary={t('settings')} />
+            </ListItemButton>
+          )}
+
+          <Divider />
           <ListItemButton onClick={handleLogout}>
             <ListItemIcon><LogoutRounded color="error" /></ListItemIcon>
-            <ListItemText primary="Sign Out" primaryTypographyProps={{ color: 'error' }} />
+            <ListItemText primary={t('logout')} primaryTypographyProps={{ color: 'error' }} />
           </ListItemButton>
         </List>
       </Drawer>

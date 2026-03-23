@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from firebase_db import get_db
-from schemas import UserRegister, UserLogin, UpdateFCMToken, UpdateLocation, MerchantProfileUpdate, ToggleFavourite
+from schemas import UserRegister, UserLogin, UpdateFCMToken, UpdateLocation, MerchantProfileUpdate, ToggleFavourite, SavedAddress
 from auth_utils import hash_password, verify_password, create_access_token, get_current_user, require_buyer, require_merchant
 from datetime import datetime
 import uuid
@@ -24,6 +24,7 @@ def serialize_user(user):
         "delivery_time_minutes": user.get("delivery_time_minutes"),
         "rating_avg": user.get("rating_avg", 0.0),
         "rating_count": user.get("rating_count", 0),
+        "upi_id": user.get("upi_id"),
         # Buyer favourites
         "favourites": user.get("favourites", []),
     }
@@ -132,6 +133,7 @@ async def get_merchant_profile(merchant_id: str):
         "delivery_time_minutes": user.get("delivery_time_minutes"),
         "rating_avg": user.get("rating_avg", 0.0),
         "rating_count": user.get("rating_count", 0),
+        "upi_id": user.get("upi_id"),
     }
 
 
@@ -158,3 +160,36 @@ async def toggle_favourite(data: ToggleFavourite, current_user=Depends(require_b
 @router.get("/favourites")
 async def get_favourites(current_user=Depends(require_buyer)):
     return current_user.get("favourites", [])
+
+
+# ─── Buyer: Address Book ─────────────────────────────────────────────────────────────
+@router.get("/addresses")
+async def get_addresses(current_user=Depends(require_buyer)):
+    return current_user.get("saved_addresses", [])
+
+
+@router.post("/addresses")
+async def save_address(data: SavedAddress, current_user=Depends(require_buyer)):
+    db = get_db()
+    addresses = current_user.get("saved_addresses", [])
+    # Max 5 saved addresses
+    if len(addresses) >= 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 saved addresses allowed")
+    new_address = {
+        "id": str(uuid.uuid4())[:8],
+        "label": data.label,
+        "address_text": data.address_text,
+        "lat": data.lat,
+        "lng": data.lng,
+    }
+    addresses.append(new_address)
+    db.collection("users").document(current_user["id"]).update({"saved_addresses": addresses})
+    return {"addresses": addresses}
+
+
+@router.delete("/addresses/{address_id}")
+async def delete_address(address_id: str, current_user=Depends(require_buyer)):
+    db = get_db()
+    addresses = [a for a in current_user.get("saved_addresses", []) if a["id"] != address_id]
+    db.collection("users").document(current_user["id"]).update({"saved_addresses": addresses})
+    return {"addresses": addresses}

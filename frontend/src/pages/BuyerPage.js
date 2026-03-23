@@ -24,6 +24,9 @@ import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavouri
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
 import LiveTrackingMap from '../components/LiveTrackingMap';
+import SettingsPage from './SettingsPage';
+import { useSettings } from '../context/SettingsContext';
+import { QRCodeSVG } from 'qrcode.react';
 
 // Fix leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -77,6 +80,7 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
         total_price: totalPrice,
         merchant_id: product.merchant_id,
         merchant_name: product.merchant_name,
+        merchant_upi_id: product.merchant_upi_id || null,
         buyer_location: userLocation
           ? { type: 'Point', coordinates: [userLocation[1], userLocation[0]] }
           : null,
@@ -222,6 +226,39 @@ function ReviewForm({ order, onDone }) {
   );
 }
 
+// ─── UPI Pay Button ────────────────────────────────────────────────────────────
+function UPIPayButton({ order }) {
+  const [open, setOpen] = useState(false);
+  const upiUrl = `upi://pay?pa=${order.merchant_upi_id}&pn=${encodeURIComponent(order.merchant_name)}&am=${order.total_price}&cu=INR&tn=NearSell+Order`;
+  return (
+    <>
+      <Button size="small" variant="outlined" fullWidth sx={{ mt: 1, borderColor: '#FF6B35', color: '#FF6B35' }}
+        onClick={() => setOpen(true)}>
+        💸 Pay ₹{order.total_price} via UPI
+      </Button>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Typography fontWeight={700}>Scan to Pay</Typography>
+          <IconButton onClick={() => setOpen(false)}><CloseRounded /></IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ textAlign: 'center', py: 2 }}>
+            <Box sx={{ display: 'inline-block', p: 2, bgcolor: 'white', borderRadius: 2, boxShadow: 3 }}>
+              <QRCodeSVG value={upiUrl} size={200} level="H" />
+            </Box>
+            <Typography variant="body2" mt={2}>UPI: <strong>{order.merchant_upi_id}</strong></Typography>
+            <Chip label={`Pay ₹${order.total_price}`} color="primary" sx={{ mt: 1, fontWeight: 700, fontSize: 15 }} />
+            <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+              Works with PhonePe, GPay, Paytm, BHIM & all UPI apps
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ─── My Orders Tab ────────────────────────────────────────────────────────────
 function MyOrdersTab({ onReorder, buyerLocation }) {
   const [orders, setOrders] = useState([]);
@@ -300,6 +337,11 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
                   Repeat Order
                 </Button>
 
+                {/* UPI QR Pay button */}
+                {o.status === 'completed' && o.merchant_upi_id && (
+                  <UPIPayButton order={o} />
+                )}
+
                 {/* COD Confirmation */}
                 {o.status === 'completed' && !o.payment_confirmed && !confirmedPayments[o.id] && (
                   <Button
@@ -335,6 +377,8 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
 export default function BuyerPage() {
   const { saveLocation } = useAuth();
   const { notifications } = useNotifications();
+  const { t } = useSettings();
+  const [showSettings, setShowSettings] = useState(false);
   const [products, setProducts] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
@@ -451,9 +495,11 @@ export default function BuyerPage() {
     setTimeout(() => setOrderSuccess(''), 5000);
   };
 
+  if (showSettings) return <SettingsPage onBack={() => setShowSettings(false)} />;
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Navbar />
+      <Navbar onOpenSettings={() => setShowSettings(true)} />
 
       {/* 🔔 Merchant Arrived Alarm Banner */}
       {alarmNotif && (
@@ -488,14 +534,14 @@ export default function BuyerPage() {
       <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 }, mt: alarmNotif ? '140px' : 0 }}>
 
         <Box sx={{ mb: 3 }}>
-          <Typography variant="h5" fontWeight={700}>Nearby Products 📍</Typography>
-          <Typography variant="body2" color="text.secondary">Merchants selling in your area right now</Typography>
+          <Typography variant="h5" fontWeight={700}>{t('nearbyProducts')}</Typography>
+          <Typography variant="body2" color="text.secondary">{t('merchantsNearby')}</Typography>
         </Box>
 
         {/* Tabs */}
         <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
-          <Tab label="Browse Products" icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
-          <Tab label="My Orders" icon={<ListAltRounded fontSize="small" />} iconPosition="start" />
+          <Tab label={t('browseProducts')} icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
+          <Tab label={t('myOrders')} icon={<ListAltRounded fontSize="small" />} iconPosition="start" />
         </Tabs>
 
         {/* ── Browse Tab ── */}
@@ -508,7 +554,7 @@ export default function BuyerPage() {
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
                 <TextField
-                  placeholder={listening ? '🎤 Listening...' : 'Search products, merchants...'}
+                  placeholder={listening ? '🎤 Listening...' : t('searchPlaceholder')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   fullWidth size="small"
@@ -789,13 +835,13 @@ export default function BuyerPage() {
                           <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
                             <Button size="small" variant="outlined" fullWidth
                               onClick={() => setSelectedProduct(p)}>
-                              Details
+                              {t('details')}
                             </Button>
                             <Button size="small" variant="contained" fullWidth
                               startIcon={<ShoppingCartRounded fontSize="small" />}
                               onClick={() => setOrderProduct(p)}
                               disabled={p.sold_out}>
-                              {p.sold_out ? 'Sold Out' : 'Order'}
+                              {p.sold_out ? t('soldOut') : t('order')}
                             </Button>
                           </Box>
                         </CardContent>
