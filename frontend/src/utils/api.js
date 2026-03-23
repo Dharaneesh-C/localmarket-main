@@ -54,4 +54,14 @@ export const getFavourites = () => API.get('/auth/favourites');
 // COD
 export const confirmPayment = (orderId) => API.post(`/orders/${orderId}/confirm-payment`);
 
+// Merchant Analytics
+export const getMerchantAnalytics = () => API.get('/merchant/analytics');
+
+// Admin
+export const getAdminSummary = () => API.get('/admin/summary');
+export const getAdminMerchants = () => API.get('/admin/merchants');
+export const getAdminBuyers = () => API.get('/admin/buyers');
+export const getAdminOrders = () => API.get('/admin/orders');
+export const getAdminRevenueChart = () => API.get('/admin/revenue-chart');
+
 export default API;

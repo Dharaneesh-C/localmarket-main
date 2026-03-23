@@ -9,7 +9,7 @@ import {
   AddRounded, EditRounded, DeleteRounded, StorefrontRounded,
   InventoryRounded, CheckCircleRounded, PauseCircleRounded,
   CloudUploadRounded, CloseRounded, ListAltRounded,
-  PersonPinCircleRounded,
+  PersonPinCircleRounded, BarChartRounded,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -20,6 +20,7 @@ import {
   getMerchantDashboard, getMerchantOrders, updateOrderStatus, merchantArrived,
 } from '../utils/api';
 import MerchantProfilePage from './MerchantProfilePage';
+import MerchantAnalyticsPage from './MerchantAnalyticsPage';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
 
@@ -320,6 +321,7 @@ export default function MerchantPage() {
   const [orders, setOrders] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -425,9 +427,8 @@ export default function MerchantPage() {
     </Box>
   );
 
-  if (showProfile) {
-    return <MerchantProfilePage onBack={() => setShowProfile(false)} />;
-  }
+  if (showProfile) return <MerchantProfilePage onBack={() => setShowProfile(false)} />;
+  if (showAnalytics) return <MerchantAnalyticsPage onBack={() => setShowAnalytics(false)} />;
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -440,9 +441,13 @@ export default function MerchantPage() {
             <Typography variant="h5" fontWeight={700}>Welcome, {user?.name} 👋</Typography>
             <Typography variant="body2" color="text.secondary">Manage your products and reach buyers nearby</Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button variant="outlined" startIcon={<StorefrontRounded />} onClick={() => setShowProfile(true)}>
               My Profile
+            </Button>
+            <Button variant="outlined" startIcon={<BarChartRounded />} onClick={() => setShowAnalytics(true)}
+              sx={{ color: '#378ADD', borderColor: '#378ADD' }}>
+              Analytics
             </Button>
             <Button variant="contained" startIcon={<AddRounded />} onClick={handleOpenAdd} size="large">
               Post New Product

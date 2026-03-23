@@ -8,6 +8,7 @@ import { NotificationProvider } from './context/NotificationContext';
 import AuthPage from './pages/AuthPage';
 import MerchantPage from './pages/MerchantPage';
 import BuyerPage from './pages/BuyerPage';
+import AdminDashboard from './pages/AdminDashboard';
 import { CircularProgress, Box } from '@mui/material';
 
 function ProtectedRoute({ children, requiredRole }) {
@@ -41,6 +42,9 @@ function AppRoutes() {
       } />
       <Route path="/buyer" element={
         <ProtectedRoute requiredRole="buyer"><BuyerPage /></ProtectedRoute>
+      } />
+      <Route path="/admin" element={
+        <ProtectedRoute><AdminDashboard /></ProtectedRoute>
       } />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

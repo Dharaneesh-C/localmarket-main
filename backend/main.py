@@ -13,6 +13,8 @@ from routes.products import router as products_router
 from routes.notifications import router as notifications_router
 from routes.orders import router as orders_router
 from routes.reviews import router as reviews_router
+from routes.admin import router as admin_router
+from routes.analytics import router as analytics_router
 
 
 @asynccontextmanager
@@ -53,6 +55,8 @@ app.include_router(products_router, prefix="/api/products", tags=["Products"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["Notifications"])
 app.include_router(orders_router, prefix="/api/orders", tags=["Orders"])
 app.include_router(reviews_router, prefix="/api/reviews", tags=["Reviews"])
+app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+app.include_router(analytics_router, prefix="/api/merchant", tags=["Analytics"])
 
 
 @app.get("/")
