@@ -40,7 +40,7 @@ const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected
 
 const IMGBB_API_KEY = process.env.REACT_APP_IMGBB_API_KEY || 'f4509acb17c6d5497685c228f5267be8';
 const CATEGORIES = ['Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
-const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '' };
+const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '', stock: '' };
 
 // ─── Image Uploader ───────────────────────────────────────────────────────────
 function ImageUploader({ value, onChange }) {
@@ -628,7 +628,22 @@ export default function MerchantPage() {
                         </Box>
                         <Typography variant="h6" fontWeight={600} noWrap>{p.title}</Typography>
                         <Typography variant="body2" color="text.secondary" noWrap>{p.description}</Typography>
-                        <Typography variant="h6" color="primary" fontWeight={700} mt={1}>₹{p.price}/{p.unit}</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                          <Typography variant="h6" color="primary" fontWeight={700}>₹{p.price}/{p.unit}</Typography>
+                          {p.stock !== null && p.stock !== undefined && (
+                            <Chip
+                              label={p.stock <= 0 ? 'Sold Out' : `📦 ${p.stock} left`}
+                              size="small"
+                              sx={{ fontSize: 10,
+                                bgcolor: p.stock <= 0 ? '#ffebee' : '#E1F5EE',
+                                color: p.stock <= 0 ? '#c62828' : '#0F6E56',
+                              }}
+                            />
+                          )}
+                          {p.rating_count > 0 && (
+                            <Typography variant="caption" color="text.secondary">⭐ {p.rating_avg} ({p.rating_count})</Typography>
+                          )}
+                        </Box>
                         <Divider sx={{ my: 1.5 }} />
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <FormControlLabel
@@ -680,6 +695,24 @@ export default function MerchantPage() {
             <Grid item xs={12}>
               <TextField label="Description" value={form.description} multiline rows={2}
                 onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Stock Quantity (leave empty = unlimited)"
+                type="number"
+                value={form.stock}
+                onChange={(e) => setForm({ ...form, stock: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                fullWidth
+                placeholder="e.g. 10"
+                inputProps={{ min: 0 }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ bgcolor: '#F5F7F6', borderRadius: 2, p: 1.5, height: '100%', display: 'flex', alignItems: 'center' }}>
+                <Typography variant="caption" color="text.secondary">
+                  📦 Set a stock limit to auto-pause the product when it runs out. Leave empty for unlimited stock.
+                </Typography>
+              </Box>
             </Grid>
             <Grid item xs={12}>
               <ImageUploader

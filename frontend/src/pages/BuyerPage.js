@@ -4,7 +4,7 @@ import {
   Chip, TextField, InputAdornment, CircularProgress, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
   Divider, Fade, Tab, Tabs, Select, MenuItem, FormControl,
-  InputLabel, Collapse,
+  InputLabel, Collapse, Slider, Rating,
 } from '@mui/material';
 import {
   SearchRounded, CloseRounded,
@@ -18,7 +18,7 @@ import 'leaflet/dist/leaflet.css';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { getNearbyProducts, placeOrder, getMyOrders } from '../utils/api';
+import { getNearbyProducts, placeOrder, getMyOrders, submitReview } from '../utils/api';
 import { stopAlarm } from '../utils/alarm';
 
 // Fix leaflet icons
@@ -162,10 +162,67 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
   );
 }
 
+// ─── Review Form ─────────────────────────────────────────────────────────────
+function ReviewForm({ order, onDone }) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!rating) return;
+    setLoading(true);
+    try {
+      await submitReview({
+        order_id: order.id,
+        product_id: order.product_id,
+        merchant_id: order.merchant_id,
+        rating,
+        comment: comment.trim() || null,
+      });
+      setDone(true);
+      onDone();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (done) return <Alert severity="success" sx={{ mt: 1 }}>Thanks for your review! ⭐</Alert>;
+
+  return (
+    <Box sx={{ mt: 1.5, bgcolor: '#F5F7F6', borderRadius: 2, p: 1.5 }}>
+      <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" mb={0.5}>
+        RATE THIS ORDER
+      </Typography>
+      <Rating
+        value={rating}
+        onChange={(_, v) => setRating(v)}
+        size="large"
+      />
+      <TextField
+        placeholder="Write a comment (optional)"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        fullWidth size="small" multiline rows={2}
+        sx={{ mt: 1, mb: 1 }}
+      />
+      <Button
+        size="small" variant="contained" onClick={handleSubmit}
+        disabled={!rating || loading}
+      >
+        {loading ? <CircularProgress size={16} color="inherit" /> : 'Submit Review'}
+      </Button>
+    </Box>
+  );
+}
+
 // ─── My Orders Tab ────────────────────────────────────────────────────────────
 function MyOrdersTab() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reviewed, setReviewed] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -215,6 +272,13 @@ function MyOrdersTab() {
                 <Typography variant="caption" color="text.disabled" display="block" mt={0.5}>
                   {new Date(o.created_at).toLocaleString()}
                 </Typography>
+                {/* Review form for completed orders */}
+                {o.status === 'completed' && !reviewed[o.id] && (
+                  <ReviewForm order={o} onDone={() => setReviewed(r => ({...r, [o.id]: true}))} />
+                )}
+                {reviewed[o.id] && (
+                  <Alert severity="success" sx={{ mt: 1 }}>Review submitted! ⭐</Alert>
+                )}
               </CardContent>
             </Card>
           </Grid>
@@ -244,11 +308,12 @@ export default function BuyerPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedMerchant, setSelectedMerchant] = useState('All');
   const [sortBy, setSortBy] = useState('distance'); // distance | price_asc | price_desc
+  const [radius, setRadius] = useState(20); // km
 
-  const loadProducts = useCallback(async (lat, lng) => {
+  const loadProducts = useCallback(async (lat, lng, r) => {
     setLoading(true);
     try {
-      const res = await getNearbyProducts(lat, lng);
+      const res = await getNearbyProducts(lat, lng, r || radius);
       setProducts(res.data);
       setFiltered(res.data);
     } catch (e) {
@@ -430,6 +495,21 @@ export default function BuyerPage() {
                     ))}
                   </Box>
 
+                  {/* Radius slider */}
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" mb={1}>
+                    📍 SEARCH RADIUS — {radius} km
+                  </Typography>
+                  <Slider
+                    value={radius}
+                    min={1} max={50} step={1}
+                    marks={[{value:1,label:'1km'},{value:10,label:'10km'},{value:25,label:'25km'},{value:50,label:'50km'}]}
+                    onChange={(_, v) => setRadius(v)}
+                    onChangeCommitted={(_, v) => {
+                      if (userLocation) loadProducts(userLocation[0], userLocation[1], v);
+                    }}
+                    sx={{ mb: 3, color: '#1D9E75' }}
+                  />
+
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     {/* Merchant filter */}
                     <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
@@ -560,6 +640,27 @@ export default function BuyerPage() {
                           </Box>
                           <Typography variant="subtitle1" fontWeight={600} noWrap>{p.title}</Typography>
                           <Typography variant="caption" color="text.secondary" display="block" noWrap>{p.description}</Typography>
+
+                          {/* Rating */}
+                          {p.rating_count > 0 && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                              <Rating value={p.rating_avg} precision={0.1} size="small" readOnly />
+                              <Typography variant="caption" color="text.secondary">({p.rating_count})</Typography>
+                            </Box>
+                          )}
+
+                          {/* Stock badge */}
+                          {p.stock !== null && p.stock !== undefined && (
+                            <Chip
+                              label={p.sold_out ? 'Sold Out' : `${p.stock} left`}
+                              size="small"
+                              sx={{ mt: 0.5, fontSize: 10,
+                                bgcolor: p.sold_out ? '#ffebee' : '#E1F5EE',
+                                color: p.sold_out ? '#c62828' : '#0F6E56',
+                              }}
+                            />
+                          )}
+
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                             <Typography variant="h6" color="primary" fontWeight={700}>
                               ₹{p.price}
@@ -574,8 +675,9 @@ export default function BuyerPage() {
                             </Button>
                             <Button size="small" variant="contained" fullWidth
                               startIcon={<ShoppingCartRounded fontSize="small" />}
-                              onClick={() => setOrderProduct(p)}>
-                              Order
+                              onClick={() => setOrderProduct(p)}
+                              disabled={p.sold_out}>
+                              {p.sold_out ? 'Sold Out' : 'Order'}
                             </Button>
                           </Box>
                         </CardContent>

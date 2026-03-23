@@ -64,6 +64,7 @@ def unflatten_from_firestore(data: dict) -> dict:
 
 def serialize_product(p, distance_km=None):
     p = unflatten_from_firestore(p)
+    stock = p.get("stock")
     return {
         "id": p["id"],
         "title": p["title"],
@@ -78,6 +79,10 @@ def serialize_product(p, distance_km=None):
         "merchant_location": p["merchant_location"],
         "delivery_area": p.get("delivery_area"),
         "is_active": p.get("is_active", True),
+        "stock": stock,  # None = unlimited
+        "sold_out": stock is not None and stock <= 0,
+        "rating_avg": round(p.get("rating_avg", 0.0), 1),
+        "rating_count": p.get("rating_count", 0),
         "created_at": p.get("created_at"),
         "distance_km": round(distance_km, 2) if distance_km is not None else None,
     }
@@ -95,6 +100,9 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
         "merchant_name": current_user["name"],
         "merchant_phone": current_user.get("phone"),
         "is_active": True,
+        "stock": data.stock,  # None = unlimited
+        "rating_avg": 0.0,
+        "rating_count": 0,
         "created_at": datetime.utcnow().isoformat(),
     }
 

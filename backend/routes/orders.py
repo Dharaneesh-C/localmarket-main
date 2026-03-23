@@ -58,6 +58,19 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
     # Save to Firestore (flatten nested location)
     db.collection("orders").document(order_id).set(flatten_order(order_doc))
 
+    # Reduce stock if product has limited stock
+    try:
+        p_ref = db.collection("products").document(data.product_id)
+        p_doc = p_ref.get()
+        if p_doc.exists:
+            p_data = p_doc.to_dict()
+            current_stock = p_data.get("stock")
+            if current_stock is not None:
+                new_stock = max(0, current_stock - int(data.quantity))
+                p_ref.update({"stock": new_stock, "is_active": new_stock > 0})
+    except Exception as e:
+        print(f"Stock update error: {e}")
+
     # Notify the merchant via polling store
     notification = {
         "type": "new_order",

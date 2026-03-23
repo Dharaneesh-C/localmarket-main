@@ -69,6 +69,7 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = None
     delivery_area: DeliveryArea
     merchant_location: GeoLocation
+    stock: Optional[int] = None  # None = unlimited
 
 
 class ProductUpdate(BaseModel):
@@ -79,6 +80,16 @@ class ProductUpdate(BaseModel):
     category: Optional[ProductCategory] = None
     image_url: Optional[str] = None
     is_active: Optional[bool] = None
+    stock: Optional[int] = None
+
+
+# ─── Ratings ───────────────────────────────────────────────────────
+class ReviewCreate(BaseModel):
+    order_id: str
+    product_id: str
+    merchant_id: str
+    rating: int  # 1-5
+    comment: Optional[str] = None
 
 
 class ProductResponse(BaseModel):

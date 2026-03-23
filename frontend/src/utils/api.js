@@ -17,8 +17,8 @@ export const updateLocation = (location) => API.put('/auth/location', { location
 
 export const createProduct = (data) => API.post('/products', data);
 export const getMyProducts = () => API.get('/products/merchant/my-products');
-export const getNearbyProducts = (lat, lng) =>
-  API.get(`/products/nearby?lat=${lat}&lng=${lng}`);
+export const getNearbyProducts = (lat, lng, radius = 20) =>
+  API.get(`/products/nearby?lat=${lat}&lng=${lng}&radius_km=${radius}`);
 export const getProduct = (id) => API.get(`/products/${id}`);
 export const updateProduct = (id, data) => API.put(`/products/${id}`, data);
 export const deleteProduct = (id) => API.delete(`/products/${id}`);
@@ -34,5 +34,13 @@ export const getMyOrders = () => API.get('/orders/my-orders');
 export const getMerchantOrders = () => API.get('/orders/merchant-orders');
 export const updateOrderStatus = (orderId, status) => API.put(`/orders/${orderId}/status`, { status });
 export const merchantArrived = (orderId) => API.post(`/orders/${orderId}/arrived`);
+
+// Reviews
+export const submitReview = (data) => API.post('/reviews/', data);
+export const getProductReviews = (productId) => API.get(`/reviews/product/${productId}`);
+export const getMerchantReviews = (merchantId) => API.get(`/reviews/merchant/${merchantId}`);
+
+// Merchant revenue history
+export const getMerchantOrderHistory = () => API.get('/orders/merchant-orders');
 
 export default API;
