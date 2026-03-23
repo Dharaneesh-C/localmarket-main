@@ -9,7 +9,7 @@ import {
 } from '@mui/icons-material';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import Navbar from '../components/Navbar';
 import { getMerchantAnalytics } from '../utils/api';
@@ -160,8 +160,8 @@ export default function MerchantAnalyticsPage({ onBack }) {
                       <Pie data={category_breakdown} dataKey="revenue" nameKey="category"
                         cx="50%" cy="50%" outerRadius={75} label={({ category, percent }) =>
                           `${category.split(' ')[0]} ${(percent * 100).toFixed(0)}%`}>
-                        {category_breakdown.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        {category_breakdown.map((entry, i) => (
+                          <Cell key={entry.category} fill={COLORS[i % COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip formatter={(v) => [`₹${v}`, 'Revenue']} />

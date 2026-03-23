@@ -182,7 +182,7 @@ export default function AdminDashboard() {
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#f5f7f6' }}>
-                    <TableCell fontWeight={700}><strong>Name</strong></TableCell>
+                    <TableCell><strong>Name</strong></TableCell>
                     <TableCell><strong>Email</strong></TableCell>
                     <TableCell><strong>Phone</strong></TableCell>
                     <TableCell align="center"><strong>Products</strong></TableCell>
