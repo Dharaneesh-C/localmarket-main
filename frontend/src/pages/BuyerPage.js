@@ -14,43 +14,18 @@ import {
   FavoriteRounded, FavoriteBorderRounded, RepeatRounded, PaymentsRounded,
   MicRounded, MicOffRounded,
 } from '@mui/icons-material';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses } from '../utils/api';
+
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
 import LiveTrackingMap from '../components/LiveTrackingMap';
 import SettingsPage from './SettingsPage';
 import { useSettings } from '../context/SettingsContext';
 import { QRCodeSVG } from 'qrcode.react';
-
-// Fix leaflet icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-});
-
-const userIcon = L.divIcon({
-  html: `<div style="width:18px;height:18px;background:#378ADD;border-radius:50%;border:3px solid white;box-shadow:0 0 0 3px rgba(55,138,221,0.3)"></div>`,
-  iconSize: [18, 18], iconAnchor: [9, 9], className: '',
-});
-
-const merchantIcon = L.divIcon({
-  html: `<div style="background:#1D9E75;width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
-  iconSize: [32, 32], iconAnchor: [16, 32], className: '',
-});
-
-function RecenterMap({ center }) {
-  const map = useMap();
-  useEffect(() => { if (center) map.setView(center, 14); }, [center, map]);
-  return null;
-}
 
 const CATEGORY_EMOJI = { 'Vegetables & Fruits': '🥦', Dairy: '🥛', 'Handmade Goods': '🧶', 'Cooked Food': '🍱', Other: '📦' };
 const getCategoryEmoji = (cat) => CATEGORY_EMOJI[cat] || '📦';
@@ -427,6 +402,7 @@ export default function BuyerPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [orderSuccess, setOrderSuccess] = useState('');
   const [alarmNotif, setAlarmNotif] = useState(null);
+  const [activeOrders, setActiveOrders] = useState([]); // accepted orders for live tracking
   const [favourites, setFavourites] = useState(() => {
     try { return JSON.parse(localStorage.getItem('favourites') || '[]'); } catch { return []; }
   });
@@ -491,6 +467,20 @@ export default function BuyerPage() {
     stopAlarm();
     setAlarmNotif(null);
   };
+
+  // Poll for active (accepted) orders to show live tracking on Browse tab
+  const loadActiveOrders = useCallback(async () => {
+    try {
+      const res = await getMyOrders();
+      setActiveOrders((res.data || []).filter(o => o.status === 'accepted'));
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    loadActiveOrders();
+    const interval = setInterval(loadActiveOrders, 15000);
+    return () => clearInterval(interval);
+  }, [loadActiveOrders]);
 
   const handleToggleFavourite = async (merchant_id, merchant_name) => {
     try {
@@ -762,37 +752,26 @@ export default function BuyerPage() {
               </Typography>
             </Box>
 
-            {userLocation && (
-              <Box sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid #e0e0e0', mb: 3 }}>
-                <MapContainer center={userLocation} zoom={14} style={{ width: '100%', height: '380px' }}>
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <RecenterMap center={userLocation} />
-                  <Marker position={userLocation} icon={userIcon}>
-                    <Popup><b>You are here</b></Popup>
-                  </Marker>
-                  {filtered.map((p) => {
-                    const [lng, lat] = p.merchant_location.coordinates;
-                    return (
-                      <Marker key={p.id} position={[lat, lng]} icon={merchantIcon}>
-                        <Popup>
-                          <Box sx={{ minWidth: 160 }}>
-                            <Typography fontWeight={600} fontSize={13}>{p.title}</Typography>
-                            <Typography fontSize={12} color="text.secondary">{p.merchant_name}</Typography>
-                            <Typography fontSize={13} fontWeight={700} color="primary.main">₹{p.price}/{p.unit}</Typography>
-                            <Typography fontSize={12} color="text.secondary">📍 {p.distance_km} km away</Typography>
-                            <Button size="small" variant="contained" fullWidth sx={{ mt: 0.5, fontSize: 11 }}
-                              onClick={() => setOrderProduct(p)}>
-                              Order Now
-                            </Button>
-                          </Box>
-                        </Popup>
-                      </Marker>
-                    );
-                  })}
-                </MapContainer>
+            {/* Live tracking banner — shows when any accepted order exists */}
+            {activeOrders.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                {activeOrders.map(o => (
+                  <Box key={o.id} sx={{ mb: 2 }}>
+                    <Box sx={{
+                      bgcolor: '#FF6B35', color: 'white', px: 2, py: 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      borderRadius: '8px 8px 0 0',
+                    }}>
+                      <Typography fontWeight={700} fontSize={14}>
+                        🛥 {o.merchant_name} is on the way with your order!
+                      </Typography>
+                      <Button size="small" onClick={() => setActiveTab(1)}
+                        sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.6)', fontSize: 11 }}
+                        variant="outlined">Track</Button>
+                    </Box>
+                    <LiveTrackingMap order={o} buyerLocation={userLocation} />
+                  </Box>
+                ))}
               </Box>
             )}
 
