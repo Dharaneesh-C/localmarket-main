@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Avatar, Chip,
-  Grid, Button, CircularProgress, Alert, Divider, Rating,
+  Grid, Button, CircularProgress, Alert, Rating,
 } from '@mui/material';
 import {
-  StorefrontRounded, StarRounded, AccessTimeRounded,
+  StorefrontRounded, AccessTimeRounded,
   PhoneRounded, ArrowBackRounded, ShoppingCartRounded,
 } from '@mui/icons-material';
 import Navbar from '../components/Navbar';
