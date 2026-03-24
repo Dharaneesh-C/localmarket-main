@@ -168,7 +168,12 @@ function OrdersTab() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Auto-refresh every 30 seconds — no manual refresh needed
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   const handleArrived = async (orderId) => {
     setArrivedId(orderId);
@@ -209,7 +214,10 @@ function OrdersTab() {
     <Box sx={{ mt: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6" fontWeight={600}>Incoming Orders</Typography>
-        <Button size="small" variant="outlined" onClick={load}>Refresh</Button>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="caption" color="text.disabled">Auto-refreshes every 30s</Typography>
+          <Button size="small" variant="outlined" onClick={load}>Refresh Now</Button>
+        </Box>
       </Box>
       {arrivedSuccess && <Alert severity="success" sx={{ mb: 2 }}>{arrivedSuccess}</Alert>}
               {acceptedOrder && (

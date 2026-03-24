@@ -264,3 +264,45 @@ async def confirm_payment(order_id: str, current_user=Depends(require_buyer)):
     }
     store_notification(order_data["merchant_id"], notification)
     return {"message": "Payment confirmed"}
+
+
+# ─── Buyer: Cancel a pending order ──────────────────────────────────────────────────
+@router.post("/{order_id}/cancel")
+async def cancel_order(order_id: str, current_user=Depends(require_buyer)):
+    db = get_db()
+    order_ref = db.collection("orders").document(order_id)
+    order = order_ref.get()
+    if not order.exists:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order_data = order.to_dict()
+    if order_data.get("buyer_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not your order")
+    if order_data.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Only pending orders can be cancelled")
+
+    order_ref.update({
+        "status": "cancelled",
+        "cancelled_at": datetime.utcnow().isoformat(),
+        "cancelled_by": "buyer",
+    })
+
+    # Restore stock if product had limited stock
+    try:
+        p_ref = db.collection("products").document(order_data["product_id"])
+        p_doc = p_ref.get()
+        if p_doc.exists:
+            p_data = p_doc.to_dict()
+            if p_data.get("stock") is not None:
+                restored = p_data["stock"] + int(order_data.get("quantity", 0))
+                p_ref.update({"stock": restored, "is_active": restored > 0})
+    except Exception as e:
+        print(f"Stock restore error: {e}")
+
+    # Notify merchant
+    store_notification(order_data["merchant_id"], {
+        "type": "order_cancelled",
+        "order_id": order_id,
+        "title": f"🚫 Order cancelled by {current_user['name']}",
+        "body": f"{order_data.get('product_title')} order has been cancelled",
+    })
+    return {"message": "Order cancelled successfully"}

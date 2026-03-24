@@ -227,8 +227,11 @@ async def update_product(product_id: str, data: ProductUpdate, current_user=Depe
     p = p_ref.get()
     if not p.exists or p.to_dict().get("merchant_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Product not found")
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    p_ref.update(update_data)
+    # Use model_dump(exclude_unset=True) so only explicitly-provided fields are updated.
+    # This correctly handles is_active=False, stock=0 — previously filtered out by `if v is not None`.
+    update_data = {k: v for k, v in data.model_dump(exclude_unset=True).items()}
+    if update_data:
+        p_ref.update(update_data)
     return {"message": "Product updated"}
 
 

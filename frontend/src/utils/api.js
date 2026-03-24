@@ -68,6 +68,7 @@ export const getMyOrders = () => API.get('/orders/my-orders');
 export const getMerchantOrders = () => API.get('/orders/merchant-orders');
 export const updateOrderStatus = (orderId, status) => API.put(`/orders/${orderId}/status`, { status });
 export const merchantArrived = (orderId) => API.post(`/orders/${orderId}/arrived`);
+export const cancelOrder = (orderId) => API.post(`/orders/${orderId}/cancel`);
 
 // Reviews
 export const submitReview = (data) => API.post('/reviews/', data);

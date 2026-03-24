@@ -12,13 +12,13 @@ import {
   ShoppingCartRounded, ListAltRounded, AddRounded, RemoveRounded,
   FilterAltRounded, SortRounded, TuneRounded,
   FavoriteRounded, FavoriteBorderRounded, RepeatRounded, PaymentsRounded,
-  MicRounded, MicOffRounded,
+  MicRounded, MicOffRounded, CancelRounded, PhoneRounded,
 } from '@mui/icons-material';
 
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses } from '../utils/api';
+import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses, cancelOrder } from '../utils/api';
 
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
@@ -34,8 +34,8 @@ const CATEGORY_EMOJI = { 'Vegetables & Fruits': '🥦', Dairy: '🥛', 'Handmade
 const getCategoryEmoji = (cat) => CATEGORY_EMOJI[cat] || '📦';
 const CATEGORIES = ['All', 'Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
 
-const statusColor = { pending: 'warning', accepted: 'success', rejected: 'error', completed: 'success' };
-const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected: '❌ Rejected', completed: '🎉 Completed' };
+const statusColor = { pending: 'warning', accepted: 'success', rejected: 'error', completed: 'success', cancelled: 'default' };
+const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected: '❌ Rejected', completed: '🎉 Completed', cancelled: '🚫 Cancelled' };
 const PAGE_SIZE = 12;
 
 // ─── Order Dialog ─────────────────────────────────────────────────────────────
@@ -280,6 +280,7 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
   const [loading, setLoading] = useState(true);
   const [reviewed, setReviewed] = useState({});
   const [confirmedPayments, setConfirmedPayments] = useState({});
+  const [cancellingId, setCancellingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -300,6 +301,16 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
       await confirmPayment(orderId);
       setConfirmedPayments(p => ({ ...p, [orderId]: true }));
     } catch (e) { console.error(e); }
+  };
+
+  const handleCancel = async (orderId) => {
+    if (!window.confirm('Cancel this order? This cannot be undone.')) return;
+    setCancellingId(orderId);
+    try {
+      await cancelOrder(orderId);
+      await load(); // refresh list
+    } catch (e) { console.error(e); }
+    finally { setCancellingId(null); }
   };
 
   if (loading) return <Box sx={{ mt: 2 }}><OrderCardSkeleton count={4} /></Box>;
@@ -345,6 +356,19 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
                 {/* 💬 Chat for active orders */}
                 {['pending', 'accepted'].includes(o.status) && (
                   <OrderChat orderId={o.id} orderStatus={o.status} />
+                )}
+
+                {/* Cancel Order — only for pending */}
+                {o.status === 'pending' && (
+                  <Button
+                    size="small" variant="outlined" fullWidth color="error"
+                    startIcon={cancellingId === o.id ? <CircularProgress size={14} color="inherit" /> : <CancelRounded />}
+                    sx={{ mt: 1 }}
+                    disabled={cancellingId === o.id}
+                    onClick={() => handleCancel(o.id)}
+                  >
+                    {cancellingId === o.id ? 'Cancelling...' : 'Cancel Order'}
+                  </Button>
                 )}
 
                 {/* Repeat Order button */}
@@ -903,10 +927,17 @@ export default function BuyerPage() {
                               ₹{p.price}
                               <Typography component="span" variant="caption" color="text.secondary">/{p.unit}</Typography>
                             </Typography>
-                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                               {p.delivery_time_minutes && (
                                 <Chip label={`⏱${p.delivery_time_minutes}m`} size="small"
                                   sx={{ fontSize: 9, height: 18, bgcolor: '#E1F5EE', color: '#0F6E56' }} />
+                              )}
+                              {(p.available_from || p.available_until) && (
+                                <Chip
+                                  label={`⏰ ${p.available_from || '00:00'}–${p.available_until || '23:59'}`}
+                                  size="small"
+                                  sx={{ fontSize: 9, height: 18, bgcolor: '#E6F1FB', color: '#185FA5' }}
+                                />
                               )}
                               {p.sold_out && (
                                 <Chip label="Sold Out" size="small"
@@ -995,6 +1026,12 @@ export default function BuyerPage() {
               <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                 <Chip label={selectedProduct.category} size="small" />
                 <Chip label={`📍 ${selectedProduct.distance_km} km away`} size="small" color="primary" variant="outlined" />
+                {(selectedProduct.available_from || selectedProduct.available_until) && (
+                  <Chip
+                    label={`⏰ Available ${selectedProduct.available_from || '00:00'} – ${selectedProduct.available_until || '23:59'}`}
+                    size="small" sx={{ bgcolor: '#E6F1FB', color: '#185FA5' }}
+                  />
+                )}
               </Box>
               <Typography variant="body2" color="text.secondary" mb={2}>{selectedProduct.description}</Typography>
               <Typography variant="h5" color="primary" fontWeight={700} mb={2}>
@@ -1006,7 +1043,18 @@ export default function BuyerPage() {
                 <Typography variant="subtitle2" fontWeight={600} mb={1}>Merchant Info</Typography>
                 <Typography variant="body2">👤 {selectedProduct.merchant_name}</Typography>
                 {selectedProduct.merchant_phone && (
-                  <Typography variant="body2">📞 {selectedProduct.merchant_phone}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
+                    <Typography variant="body2">📞 {selectedProduct.merchant_phone}</Typography>
+                    <Button
+                      size="small" variant="outlined" color="success"
+                      startIcon={<PhoneRounded />}
+                      component="a"
+                      href={`tel:${selectedProduct.merchant_phone}`}
+                      sx={{ minWidth: 80, fontSize: 11 }}
+                    >
+                      Call
+                    </Button>
+                  </Box>
                 )}
               </Box>
               <Box sx={{ display: 'flex', gap: 1.5 }}>

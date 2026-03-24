@@ -121,6 +121,7 @@ class OrderStatus(str, Enum):
     accepted = "accepted"
     rejected = "rejected"
     completed = "completed"
+    cancelled = "cancelled"
 
 
 class OrderCreate(BaseModel):
