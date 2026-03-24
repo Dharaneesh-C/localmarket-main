@@ -9,7 +9,7 @@ import {
   AddRounded, EditRounded, DeleteRounded, StorefrontRounded,
   InventoryRounded, CheckCircleRounded, PauseCircleRounded,
   CloudUploadRounded, CloseRounded, ListAltRounded,
-  PersonPinCircleRounded, BarChartRounded,
+  PersonPinCircleRounded, BarChartRounded, DownloadRounded,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -454,6 +454,31 @@ export default function MerchantPage() {
     } catch (e) {}
   };
 
+  const handleExportCSV = () => {
+    if (!orders.length) { alert('No orders to export yet.'); return; }
+    const headers = ['Order ID', 'Date', 'Product', 'Buyer', 'Phone', 'Quantity', 'Unit', 'Total (₹)', 'Status', 'Note'];
+    const rows = orders.map(o => [
+      o.id,
+      new Date(o.created_at).toLocaleString(),
+      o.product_title,
+      o.buyer_name,
+      o.buyer_phone || '',
+      o.quantity,
+      o.unit,
+      o.total_price,
+      o.status,
+      (o.note || '').replace(/,/g, ';'),
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nearsell-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (pageLoading) return (
     <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 } }}>
       <StatCardsSkeleton />
@@ -483,6 +508,10 @@ export default function MerchantPage() {
             <Button variant="outlined" startIcon={<BarChartRounded />} onClick={() => setShowAnalytics(true)}
               sx={{ color: '#378ADD', borderColor: '#378ADD' }}>
               {t('analytics')}
+            </Button>
+            <Button variant="outlined" startIcon={<DownloadRounded />} onClick={handleExportCSV}
+              sx={{ color: '#1D9E75', borderColor: '#1D9E75' }}>
+              Export CSV
             </Button>
             <Button variant="outlined" startIcon={<CloudUploadRounded />} onClick={() => setBulkOpen(true)}
               sx={{ color: '#9B59B6', borderColor: '#9B59B6' }}>

@@ -25,6 +25,7 @@ import { useVoiceSearch } from '../hooks/useVoiceSearch';
 import LiveTrackingMap from '../components/LiveTrackingMap';
 import OrderChat from '../components/OrderChat';
 import BuyerDashboard from '../components/BuyerDashboard';
+import MerchantPublicPage from './MerchantPublicPage';
 import { ProductGridSkeleton, OrderCardSkeleton } from '../components/Skeletons';
 import SettingsPage from './SettingsPage';
 import { useSettings } from '../context/SettingsContext';
@@ -435,6 +436,7 @@ export default function BuyerPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [orderSuccess, setOrderSuccess] = useState('');
   const [alarmNotif, setAlarmNotif] = useState(null);
+  const [viewMerchantId, setViewMerchantId] = useState(null);
   const [activeOrders, setActiveOrders] = useState([]); // accepted orders for live tracking
   const [favourites, setFavourites] = useState(() => {
     try { return JSON.parse(localStorage.getItem('favourites') || '[]'); } catch { return []; }
@@ -568,6 +570,14 @@ export default function BuyerPage() {
   };
 
   if (showSettings) return <SettingsPage onBack={() => setShowSettings(false)} />;
+  if (viewMerchantId) return (
+    <MerchantPublicPage
+      merchantId={viewMerchantId}
+      userLocation={userLocation}
+      onBack={() => setViewMerchantId(null)}
+      onOrder={(p) => { setViewMerchantId(null); setOrderProduct(p); }}
+    />
+  );
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -910,7 +920,11 @@ export default function BuyerPage() {
 
                           {/* Merchant + rating on same row */}
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.3 }}>
-                            <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: '55%' }}>
+                            <Typography
+                              variant="caption" color="primary" noWrap
+                              sx={{ maxWidth: '55%', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                              onClick={(e) => { e.stopPropagation(); setViewMerchantId(p.merchant_id); }}
+                            >
                               by {p.merchant_name}
                             </Typography>
                             {p.rating_count > 0 && (

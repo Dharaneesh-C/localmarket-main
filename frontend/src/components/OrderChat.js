@@ -7,25 +7,33 @@ import { SendRounded } from '@mui/icons-material';
 import { sendMessage, getMessages } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
-export default function OrderChat({ orderId, orderStatus }) {
+export default function OrderChat({ orderId, orderStatus, onUnreadChange }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [lastReadCount, setLastReadCount] = useState(0);
   const bottomRef = useRef(null);
   const intervalRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
       const res = await getMessages(orderId);
-      setMessages(res.data || []);
+      const msgs = res.data || [];
+      setMessages(msgs);
+      // Count messages from others that arrived after last read
+      if (!open) {
+        const unread = msgs.filter(m => m.sender_id !== user?.id).length - lastReadCount;
+        onUnreadChange?.(Math.max(0, unread));
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, open, lastReadCount, user?.id, onUnreadChange]);
 
   useEffect(() => {
     load();
@@ -65,17 +73,40 @@ export default function OrderChat({ orderId, orderStatus }) {
 
   const isMine = (msg) => msg.sender_id === user?.id;
 
+  const unreadCount = messages.filter(m => m.sender_id !== user?.id).length - lastReadCount;
+
+  const handleOpen = () => {
+    setOpen(true);
+    setLastReadCount(messages.filter(m => m.sender_id !== user?.id).length);
+    onUnreadChange?.(0);
+  };
+
   return (
-    <Box sx={{ mt: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
-      {/* Header */}
-      <Box sx={{ bgcolor: '#1D9E75', px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Box sx={{ mt: 1.5, border: '1px solid', borderColor: open ? 'primary.main' : 'divider', borderRadius: 2, overflow: 'hidden' }}>
+      {/* Header — clickable to toggle */}
+      <Box
+        onClick={() => open ? setOpen(false) : handleOpen()}
+        sx={{ bgcolor: '#1D9E75', px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer',
+          '&:hover': { bgcolor: '#0F6E56' } }}
+      >
         <Typography fontSize={13} fontWeight={700} color="white">💬 Chat</Typography>
-        <Chip label={`${messages.length} messages`} size="small"
-          sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontSize: 10, height: 18 }} />
+        {unreadCount > 0 && !open ? (
+          <Chip label={`${unreadCount} new`} size="small"
+            sx={{ bgcolor: '#FF6B35', color: 'white', fontSize: 10, height: 18, fontWeight: 700 }} />
+        ) : (
+          <Chip label={`${messages.length} messages`} size="small"
+            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontSize: 10, height: 18 }} />
+        )}
+        <Box sx={{ ml: 'auto', color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>
+          {open ? '▲ Hide' : '▼ Show'}
+        </Box>
       </Box>
 
-      {/* Messages */}
-      <Box sx={{ height: 200, overflowY: 'auto', p: 1.5, bgcolor: 'background.default' }}>
+      {/* Collapsed — hide body */}
+      {!open && <Box />}
+
+      {/* Messages + Input — only when open */}
+      {open && <Box sx={{ height: 200, overflowY: 'auto', p: 1.5, bgcolor: 'background.default' }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', pt: 4 }}>
             <CircularProgress size={24} />
@@ -124,10 +155,10 @@ export default function OrderChat({ orderId, orderStatus }) {
           ))
         )}
         <div ref={bottomRef} />
-      </Box>
+      </Box>}
 
       {/* Input */}
-      <Box sx={{ display: 'flex', gap: 0.5, p: 1, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+      {open && <Box sx={{ display: 'flex', gap: 0.5, p: 1, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
         <TextField
           size="small" fullWidth
           placeholder="Type a message..."
@@ -141,7 +172,7 @@ export default function OrderChat({ orderId, orderStatus }) {
           sx={{ bgcolor: '#1D9E75', color: 'white', '&:hover': { bgcolor: '#0F6E56' }, alignSelf: 'flex-end' }}>
           {sending ? <CircularProgress size={18} color="inherit" /> : <SendRounded fontSize="small" />}
         </IconButton>
-      </Box>
+      </Box>}
     </Box>
   );
 }

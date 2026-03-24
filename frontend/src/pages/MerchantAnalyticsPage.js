@@ -119,6 +119,26 @@ export default function MerchantAnalyticsPage({ onBack }) {
           <Button variant="outlined" onClick={onBack}>← Back</Button>
         </Box>
 
+        {/* Today's Quick Summary */}
+        {(() => {
+          const today = new Date().toISOString().slice(0, 10);
+          const todayOrders = data.revenue_chart.find(d => d.date === today);
+          const todayRevenue = todayOrders?.revenue || 0;
+          const todayCount = todayOrders?.orders || 0;
+          return todayCount > 0 ? (
+            <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #1D9E75, #5DCAA5)', color: 'white' }}>
+              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 600 }}>TODAY'S SUMMARY</Typography>
+                  <Typography variant="h4" fontWeight={800}>₹{todayRevenue}</Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>{todayCount} order{todayCount !== 1 ? 's' : ''} today</Typography>
+                </Box>
+                <Box sx={{ fontSize: 48 }}>📈</Box>
+              </CardContent>
+            </Card>
+          ) : null;
+        })()}
+
         {/* Summary Cards */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={6} sm={4} md={2}>
