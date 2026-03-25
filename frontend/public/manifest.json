@@ -7,11 +7,13 @@
     { "src": "logo192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
     { "src": "logo512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#1D9E75",
   "background_color": "#F5F7F6",
   "categories": ["shopping", "food"],
-  "lang": "en-IN"
+  "lang": "en-IN",
+  "scope": "/",
+  "prefer_related_applications": false
 }

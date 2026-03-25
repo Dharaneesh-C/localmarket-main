@@ -2,25 +2,66 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
+
+    <!-- Theme & App colors -->
     <meta name="theme-color" content="#1D9E75" />
-    <meta name="description" content="NearSell - Buy fresh products from local merchants near you" />
+    <meta name="msapplication-TileColor" content="#1D9E75" />
+    <meta name="background_color" content="#F5F7F6" />
+
+    <!-- App description -->
+    <meta name="description" content="NearSell - Buy fresh products from local merchants near you. Hyperlocal marketplace for Tamil Nadu." />
+    <meta name="keywords" content="nearsell, local market, fresh vegetables, hyperlocal, buy local" />
+
+    <!-- PWA: Android -->
     <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- PWA: Apple iOS (iPhone/iPad) -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="NearSell" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link rel="apple-touch-icon" sizes="152x152" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="%PUBLIC_URL%/logo192.png" />
+
+    <!-- Apple splash screens (iPhone) -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <!-- PWA: Windows -->
+    <meta name="msapplication-TileImage" content="%PUBLIC_URL%/logo192.png" />
+    <meta name="msapplication-tap-highlight" content="no" />
+
+    <!-- Favicon -->
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico" />
+
+    <!-- Open Graph (share preview) -->
+    <meta property="og:title" content="NearSell - Local Marketplace" />
+    <meta property="og:description" content="Buy fresh products from local merchants near you" />
+    <meta property="og:image" content="%PUBLIC_URL%/logo512.png" />
+    <meta property="og:type" content="website" />
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
     <title>NearSell</title>
+
+    <style>
+      /* Prevent flash of white before React loads */
+      body { background-color: #F5F7F6; margin: 0; font-family: 'Inter', sans-serif; }
+      #root { min-height: 100vh; }
+    </style>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript>You need to enable JavaScript to run NearSell.</noscript>
     <div id="root"></div>
+
     <script>
-      // Register service worker for PWA + push notifications
+      // Register Service Worker for PWA install + offline support
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {
           navigator.serviceWorker
@@ -29,7 +70,7 @@
               console.log('✅ Service Worker registered:', reg.scope);
             })
             .catch(function (err) {
-              console.warn('Service Worker registration failed:', err);
+              console.warn('⚠️ Service Worker registration failed:', err);
             });
         });
       }
