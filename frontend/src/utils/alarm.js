@@ -55,8 +55,17 @@ function beep(ctx, frequency, startTime, duration, volume = 0.6) {
 
 // ─── Play arrival alarm ───────────────────────────────────────────────────────
 export function playArrivalAlarm() {
-  stopAlarm(); // stop any previous alarm first
+  stopAlarm();
 
+  // ── If running inside Android WebView, use native Android alarm ─────────
+  if (typeof window.AndroidBridge !== 'undefined') {
+    try {
+      window.AndroidBridge.playAlarm();
+    } catch (e) {}
+    return; // Android handles vibration + notification natively
+  }
+
+  // ── Web browser fallback — Web Audio API ─────────────────────────────────
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 

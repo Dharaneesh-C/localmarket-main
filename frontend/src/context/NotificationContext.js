@@ -21,38 +21,33 @@ export function NotificationProvider({ children }) {
     setNotifications((prev) => [newNotif, ...prev].slice(0, 50));
     setUnreadCount((prev) => prev + 1);
 
+    // Check if running inside Android WebView
+    const isAndroid = typeof window.AndroidBridge !== 'undefined';
+
+    // Helper to show notification — uses Android bridge OR browser API
+    const showNotif = (title, body, requireInteraction = false) => {
+      if (isAndroid) {
+        try { window.AndroidBridge.showNotification(title, body); } catch (e) {}
+      } else if (notificationsSupported && Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/logo192.png', requireInteraction });
+      }
+    };
+
     // 🔔 Merchant arrived — trigger alarm for buyer
     if (data.type === 'merchant_arrived') {
       playArrivalAlarm();
-      if (notificationsSupported && Notification.permission === 'granted') {
-        new Notification(data.title, {
-          body: data.body,
-          icon: '/logo192.png',
-          requireInteraction: true,
-        });
-      }
+      showNotif(data.title, data.body, true);
       return;
     }
 
     // 🛒 New order — browser notification for merchant
     if (data.type === 'new_order') {
-      if (notificationsSupported && Notification.permission === 'granted') {
-        new Notification(data.title || '🛒 New Order!', {
-          body: data.body,
-          icon: '/logo192.png',
-          requireInteraction: true,
-        });
-      }
+      showNotif(data.title || '🛒 New Order!', data.body, true);
       return;
     }
 
     // All other notifications
-    if (notificationsSupported && Notification.permission === 'granted') {
-      new Notification(data.title, {
-        body: data.body,
-        icon: '/logo192.png',
-      });
-    }
+    showNotif(data.title, data.body);
   }, [notificationsSupported]);
 
   useWebSocket(user?.id, handleMessage);
