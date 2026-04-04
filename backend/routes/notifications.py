@@ -16,34 +16,20 @@ def store_notification(user_id: str, message: dict):
     Persist notification to Firestore so it survives Vercel cold starts.
     Called by orders/products routes when events happen.
     """
-    db = get_db()
-    ts = int(time.time() * 1000)  # ms
-
-    notif_doc = {
-        "user_id": user_id,
-        "message": message,
-        "timestamp": ts,
-        "read": False,
-    }
-
-    # Use auto-ID document under notifications collection
-    db.collection("notifications").add(notif_doc)
-
-    # Cleanup: keep only last 50 per user (lazy cleanup on write)
     try:
-        old_notifs = (
-            db.collection("notifications")
-            .where("user_id", "==", user_id)
-            .order_by("timestamp")
-            .get()
-        )
-        docs = list(old_notifs)
-        if len(docs) > 50:
-            # Delete oldest ones beyond 50
-            for doc in docs[: len(docs) - 50]:
-                doc.reference.delete()
+        db = get_db()
+        ts = int(time.time() * 1000)  # ms
+
+        notif_doc = {
+            "user_id": user_id,
+            "message": message,
+            "timestamp": ts,
+            "read": False,
+        }
+        db.collection("notifications").add(notif_doc)
+        print(f"✅ Notification stored for user {user_id[:8]}...: {message.get('type')}")
     except Exception as e:
-        print(f"Notification cleanup error: {e}")
+        print(f"❌ store_notification FAILED for {user_id}: {e}")
 
 
 @router.get("/poll")
@@ -69,32 +55,23 @@ async def poll_notifications(
     # ── Fetch from Firestore ─────────────────────────────────────────────────
     try:
         db = get_db()
-        # Composite index required: user_id ASC, timestamp ASC
-        # Firestore will suggest the index URL in the error log on first run
+        # Simple query — only filter by user_id + timestamp.
+        # We sort in Python to avoid needing a Firestore composite index.
         notifs = (
             db.collection("notifications")
             .where("user_id", "==", user_id)
             .where("timestamp", ">", since)
-            .order_by("timestamp")
-            .limit(20)  # cap per poll
+            .limit(20)
             .get()
         )
-        return [n.to_dict()["message"] for n in notifs]
+        results = [n.to_dict() for n in notifs]
+        # Sort by timestamp ascending in Python — no index required
+        results.sort(key=lambda x: x.get("timestamp", 0))
+        print(f"📨 Poll for {user_id[:8]}...: {len(results)} new notifications since {since}")
+        return [r["message"] for r in results]
     except Exception as e:
-        print(f"Poll notifications error (may need Firestore index): {e}")
-        # Fallback: fetch without ordering if index not yet created
-        try:
-            db = get_db()
-            notifs = (
-                db.collection("notifications")
-                .where("user_id", "==", user_id)
-                .where("timestamp", ">", since)
-                .limit(20)
-                .get()
-            )
-            return [n.to_dict()["message"] for n in notifs]
-        except Exception:
-            return []
+        print(f"❌ Poll notifications error: {e}")
+        return []
 
 
 @router.delete("/clear")

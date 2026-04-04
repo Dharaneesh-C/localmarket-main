@@ -6,8 +6,9 @@ const getBaseUrl = () => {
 };
 
 const isVercel = () => {
-  const apiUrl = process.env.REACT_APP_API_URL || '';
-  return apiUrl.includes('vercel.app');
+  // Always use polling — WebSockets are not supported on Vercel serverless.
+  // Even on custom domains the backend is Vercel, so polling is always correct.
+  return true;
 };
 
 // ─── Polling fallback for Vercel (no persistent WebSocket support) ───

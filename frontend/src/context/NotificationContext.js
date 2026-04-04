@@ -12,7 +12,6 @@ export function NotificationProvider({ children }) {
   const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
 
   const handleMessage = useCallback((data) => {
-    // Always add to notification list
     const newNotif = {
       id: Date.now(),
       ...data,
@@ -22,21 +21,32 @@ export function NotificationProvider({ children }) {
     setNotifications((prev) => [newNotif, ...prev].slice(0, 50));
     setUnreadCount((prev) => prev + 1);
 
-    // 🔔 Merchant arrived — trigger alarm
+    // 🔔 Merchant arrived — trigger alarm for buyer
     if (data.type === 'merchant_arrived') {
       playArrivalAlarm();
-      // Browser notification too
       if (notificationsSupported && Notification.permission === 'granted') {
         new Notification(data.title, {
           body: data.body,
           icon: '/logo192.png',
-          requireInteraction: true, // stays on screen until dismissed
+          requireInteraction: true,
         });
       }
       return;
     }
 
-    // Regular notifications
+    // 🛒 New order — browser notification for merchant
+    if (data.type === 'new_order') {
+      if (notificationsSupported && Notification.permission === 'granted') {
+        new Notification(data.title || '🛒 New Order!', {
+          body: data.body,
+          icon: '/logo192.png',
+          requireInteraction: true,
+        });
+      }
+      return;
+    }
+
+    // All other notifications
     if (notificationsSupported && Notification.permission === 'granted') {
       new Notification(data.title, {
         body: data.body,
@@ -65,7 +75,9 @@ export function NotificationProvider({ children }) {
   };
 
   useEffect(() => {
-    if (user?.role === 'buyer' && notificationsSupported && Notification.permission === 'default') {
+    // Request browser notification permission for ALL users (both buyer and merchant)
+    // Merchant needs it for new order alerts, buyer needs it for merchant_arrived alarm
+    if (user && notificationsSupported && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [notificationsSupported, user]);
