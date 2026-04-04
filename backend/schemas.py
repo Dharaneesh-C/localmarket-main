@@ -67,7 +67,8 @@ class ProductCreate(BaseModel):
     unit: str = "piece"
     category: ProductCategory
     image_url: Optional[str] = None
-    delivery_area: DeliveryArea
+    delivery_area: Optional[DeliveryArea] = None   # optional — radius used instead
+    delivery_radius_km: Optional[float] = 5.0      # radius-based delivery zone
     merchant_location: GeoLocation
     stock: Optional[int] = None
     delivery_time_minutes: Optional[int] = None
@@ -86,6 +87,7 @@ class ProductUpdate(BaseModel):
     stock: Optional[int] = None
     available_from: Optional[str] = None
     available_until: Optional[str] = None
+    delivery_radius_km: Optional[float] = None
 
 
 # ─── Ratings ───────────────────────────────────────────────────────

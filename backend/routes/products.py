@@ -86,6 +86,7 @@ def serialize_product(p, distance_km=None):
         "delivery_time_minutes": p.get("delivery_time_minutes"),
         "available_from": p.get("available_from"),
         "available_until": p.get("available_until"),
+        "delivery_radius_km": p.get("delivery_radius_km", 5.0),
         "merchant_upi_id": p.get("merchant_upi_id"),
         "created_at": p.get("created_at"),
         "distance_km": round(distance_km, 2) if distance_km is not None else None,
@@ -107,7 +108,8 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
         "is_active": True,
         "stock": data.stock,
         "available_from": data.available_from,
-        "available_until": data.available_until,  # None = unlimited
+        "available_until": data.available_until,
+        "delivery_radius_km": data.delivery_radius_km or 5.0,
         "rating_avg": 0.0,
         "rating_count": 0,
         "created_at": datetime.utcnow().isoformat(),
@@ -119,6 +121,7 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
 
     try:
         m_loc = data.merchant_location.coordinates
+        delivery_radius = data.delivery_radius_km or 5.0
         all_buyers = db.collection("users").where("role", "==", "buyer").get()
         buyers_to_notify = []
 
@@ -127,7 +130,6 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
             b_loc = b.get("location")
             if not b_loc:
                 continue
-            # location may also be stored as JSON string
             if isinstance(b_loc, str):
                 try:
                     b_loc = json.loads(b_loc)
@@ -136,13 +138,9 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
             if not b_loc.get("coordinates"):
                 continue
             b_lng, b_lat = b_loc["coordinates"][0], b_loc["coordinates"][1]
-            in_area = False
-            if data.delivery_area and data.delivery_area.coordinates:
-                in_area = point_in_polygon(b_lng, b_lat, data.delivery_area.coordinates)
-            if not in_area:
-                dist = haversine(m_loc[0], m_loc[1], b_lng, b_lat)
-                in_area = dist <= 10
-            if in_area:
+            # Use radius-based check only
+            dist = haversine(m_loc[0], m_loc[1], b_lng, b_lat)
+            if dist <= delivery_radius:
                 buyers_to_notify.append(b)
 
         notification_payload = {
@@ -191,11 +189,9 @@ async def get_nearby_products(
         else:
             coords = [0, 0]
         dist = haversine(lng, lat, coords[0], coords[1])
-        in_area = False
-        delivery_area = p.get("delivery_area")
-        if delivery_area and isinstance(delivery_area, dict) and delivery_area.get("coordinates"):
-            in_area = point_in_polygon(lng, lat, delivery_area["coordinates"])
-        if in_area or dist <= radius_km:
+        # Use the product's own delivery_radius_km — fallback to buyer's search radius
+        product_radius = p.get("delivery_radius_km") or radius_km
+        if dist <= product_radius:
             result.append(serialize_product(p, distance_km=dist))
 
     result.sort(key=lambda x: x["distance_km"] or 999)

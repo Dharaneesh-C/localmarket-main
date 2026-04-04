@@ -356,6 +356,7 @@ export default function MerchantPage() {
   const [form, setForm] = useState(emptyForm);
   const [deliveryArea, setDeliveryArea] = useState(null);
   const [merchantLocation, setMerchantLocation] = useState(null);
+  const [deliveryRadius, setDeliveryRadius] = useState(5);
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState('');
@@ -385,6 +386,7 @@ export default function MerchantPage() {
     setForm(emptyForm);
     setDeliveryArea(null);
     setMerchantLocation(null);
+    setDeliveryRadius(5);
     setError('');
     setDialogOpen(true);
   };
@@ -412,8 +414,8 @@ export default function MerchantPage() {
       setError('Please fill in all required fields.');
       return;
     }
-    if (!editProduct && (!deliveryArea || !merchantLocation)) {
-      setError('Please set your location and draw a delivery area on the map.');
+    if (!editProduct && !merchantLocation) {
+      setError('Please set your location using the map below.');
       return;
     }
     setLoading(true);
@@ -425,7 +427,7 @@ export default function MerchantPage() {
         await createProduct({
           ...form,
           price: parseFloat(form.price),
-          delivery_area: deliveryArea,
+          delivery_radius_km: deliveryRadius,
           merchant_location: merchantLocation,
         });
         setSuccess('Product posted! Buyers in your area have been notified. 🎉');
@@ -641,6 +643,13 @@ export default function MerchantPage() {
                               sx={{ fontSize: 9, bgcolor: '#E6F1FB', color: '#185FA5' }}
                             />
                           )}
+                          {p.delivery_radius_km && (
+                            <Chip
+                              label={`📍 ${p.delivery_radius_km} km zone`}
+                              size="small"
+                              sx={{ fontSize: 9, bgcolor: '#F3E5F5', color: '#6A1B9A' }}
+                            />
+                          )}
                         </Box>
                         <Divider sx={{ my: 1.5 }} />
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -768,9 +777,12 @@ export default function MerchantPage() {
             {!editProduct && (
               <Grid item xs={12}>
                 <Typography variant="subtitle2" fontWeight={600} mb={1} color="text.secondary">
-                  SET YOUR LOCATION & DELIVERY AREA
+                  SET YOUR LOCATION & DELIVERY RADIUS
                 </Typography>
-                <AreaSelector onAreaChange={setDeliveryArea} onMerchantLocationChange={setMerchantLocation} />
+                <AreaSelector
+                  onAreaChange={(_, r) => { if (r) setDeliveryRadius(r); }}
+                  onMerchantLocationChange={setMerchantLocation}
+                />
               </Grid>
             )}
           </Grid>
