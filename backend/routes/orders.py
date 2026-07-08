@@ -177,7 +177,9 @@ async def merchant_arrived(
         "product_title": order_data.get("product_title"),
         "alarm": True,
     }
+
     store_notification(order_data["buyer_id"], notification)
+    
 
     return {"message": "Buyer has been alerted"}
 

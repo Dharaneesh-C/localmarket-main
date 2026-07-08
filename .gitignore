@@ -20,10 +20,7 @@ venv/
 backend/venv/
 *.egg-info/
 
-# Environment variables (secrets)
-.env
-frontend/.env
-backend/.env
+
 
 # Firebase credentials (never push!)
 firebase-credentials.json
@@ -39,3 +36,16 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Environment variables (secrets)
+.env
+.env.*
+!.env.example
+
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+backend/.env
+backend/.env.*
+!backend/.env.example

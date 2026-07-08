@@ -176,18 +176,18 @@ function OrdersTab() {
   }, [load]);
 
   const handleArrived = async (orderId) => {
-    setArrivedId(orderId);
-    try {
-      await merchantArrived(orderId);
-      setArrivedSuccess('🔔 Buyer has been alerted! Their phone is ringing.');
-      setTimeout(() => setArrivedSuccess(''), 5000);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setArrivedId(null);
-    }
-  };
+  setArrivedId(orderId);
 
+  try {
+    await merchantArrived(orderId);
+    setArrivedSuccess('🔔 Buyer has been alerted! Their phone is ringing.');
+    setTimeout(() => setArrivedSuccess(''), 5000);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setArrivedId(null);
+  }
+};
   const handleStatus = async (orderId, status) => {
     setUpdatingId(orderId);
     try {

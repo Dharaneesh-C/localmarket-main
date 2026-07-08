@@ -27,7 +27,7 @@ def store_notification(user_id: str, message: dict):
             "read": False,
         }
         db.collection("notifications").add(notif_doc)
-        print(f"✅ Notification stored for user {user_id[:8]}...: {message.get('type')}")
+       
     except Exception as e:
         print(f"❌ store_notification FAILED for {user_id}: {e}")
 
@@ -67,7 +67,6 @@ async def poll_notifications(
         results = [n.to_dict() for n in notifs]
         # Sort by timestamp ascending in Python — no index required
         results.sort(key=lambda x: x.get("timestamp", 0))
-        print(f"📨 Poll for {user_id[:8]}...: {len(results)} new notifications since {since}")
         return [r["message"] for r in results]
     except Exception as e:
         print(f"❌ Poll notifications error: {e}")
