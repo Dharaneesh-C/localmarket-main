@@ -1,11 +1,107 @@
 from fastapi import APIRouter, HTTPException, Depends
 from firebase_db import get_db
-from schemas import UserRegister, UserLogin, UpdateFCMToken, UpdateLocation, MerchantProfileUpdate, ToggleFavourite, SavedAddress
+from schemas import (
+    UserRegister,
+    UserLogin,
+    ForgotPasswordRequest,
+    VerifyOTPRequest,
+    ResetPasswordRequest,
+    UpdateFCMToken,
+    UpdateLocation,
+    MerchantProfileUpdate,
+    ToggleFavourite,
+    SavedAddress,
+)
 from auth_utils import hash_password, verify_password, create_access_token, get_current_user, require_buyer, require_merchant
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import uuid
+import random
+from email_service import send_otp_email
 
 router = APIRouter()
+
+
+def generate_otp():
+    return str(random.randint(100000, 999999))
+
+
+def get_password_reset_or_error(db, email: str):
+    reset_doc = db.collection("password_resets").document(email).get()
+    if not reset_doc.exists:
+        raise HTTPException(status_code=400, detail="No password reset request found. Please request a new OTP.")
+
+    password_reset = reset_doc.to_dict()
+    expires_at = password_reset.get("expires_at")
+    if not expires_at or expires_at <= datetime.now(timezone.utc):
+        db.collection("password_resets").document(email).delete()
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+
+    return password_reset
+
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest):
+    db = get_db()
+    users = db.collection("users").where("email", "==", data.email).get()
+    if not users:
+        raise HTTPException(status_code=404, detail="No account found with this email address")
+
+    otp = generate_otp()
+    reset_data = {
+        "email": data.email,
+        "otp": otp,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=5),
+        "verified": False,
+    }
+    db.collection("password_resets").document(data.email).set(reset_data)
+
+    try:
+        send_otp_email(data.email, otp)
+    except Exception:
+        # Do not leave a usable reset code behind when delivery failed.
+        db.collection("password_resets").document(data.email).delete()
+        raise HTTPException(status_code=500, detail="Unable to send OTP email. Please try again.")
+
+    return {"message": "OTP sent to your email address"}
+
+
+@router.post("/verify-otp")
+async def verify_otp(data: VerifyOTPRequest):
+    db = get_db()
+    if not data.otp.isdigit():
+        raise HTTPException(status_code=400, detail="OTP must contain only digits")
+    password_reset = get_password_reset_or_error(db, data.email)
+
+    if password_reset.get("otp") != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+    if password_reset.get("verified"):
+        raise HTTPException(status_code=400, detail="This OTP has already been used. Please request a new one.")
+
+    db.collection("password_resets").document(data.email).update({"verified": True})
+    return {"message": "OTP verified successfully"}
+
+
+@router.post("/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    db = get_db()
+    if not data.otp.isdigit():
+        raise HTTPException(status_code=400, detail="OTP must contain only digits")
+    password_reset = get_password_reset_or_error(db, data.email)
+
+    if password_reset.get("otp") != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+    if not password_reset.get("verified"):
+        raise HTTPException(status_code=400, detail="Please verify your OTP before resetting your password")
+
+    users = db.collection("users").where("email", "==", data.email).get()
+    if not users:
+        # The reset request is no longer valid if its account was removed.
+        db.collection("password_resets").document(data.email).delete()
+        raise HTTPException(status_code=404, detail="No account found with this email address")
+
+    db.collection("users").document(users[0].id).update({"password": hash_password(data.new_password)})
+    db.collection("password_resets").document(data.email).delete()
+    return {"message": "Password reset successfully"}
 
 
 def serialize_user(user):

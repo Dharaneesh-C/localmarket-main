@@ -9,7 +9,7 @@ import {
   PhoneRounded, PersonRounded, EmailRounded, LockRounded,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { loginUser, registerUser } from '../utils/api';
+import { loginUser, registerUser, forgotPassword, verifyOTP, resetPassword } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 // Password strength checker
@@ -64,13 +64,28 @@ export default function AuthPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
+  const [success, setSuccess] = useState('');
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', otp: '', phone: '' });
 
   const passwordStrength = useMemo(() => getPasswordStrength(form.password), [form.password]);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  const setAuthMode = (nextMode) => {
+    setMode(nextMode);
+    setError('');
+    setSuccess('');
+  };
+
   const validate = () => {
+    if (!form.email.trim()) return 'Email is required.';
+    if (!/^\S+@\S+\.\S+$/.test(form.email)) return 'Enter a valid email address.';
+    if (mode === 'forgot') return null;
+    if (mode === 'verify') return /^\d{6}$/.test(form.otp) ? null : 'OTP must be exactly 6 digits.';
+    if (mode === 'reset') {
+      if (form.password.length < 6) return 'Password must be at least 6 characters.';
+      return form.password === form.confirmPassword ? null : 'Passwords do not match.';
+    }
     if (mode === 'register') {
       if (!form.name.trim()) return 'Full name is required.';
       if (!form.phone.trim()) return 'Phone number is required.';
@@ -78,7 +93,6 @@ export default function AuthPage() {
         return 'Enter a valid 10-digit phone number.';
       if (form.password.length < 6) return 'Password must be at least 6 characters.';
     }
-    if (!form.email.trim()) return 'Email is required.';
     if (!form.password.trim()) return 'Password is required.';
     return null;
   };
@@ -86,19 +100,35 @@ export default function AuthPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     const validationError = validate();
     if (validationError) { setError(validationError); return; }
     setLoading(true);
     try {
       let res;
-      if (mode === 'login') {
+      if (mode === 'forgot') {
+        await forgotPassword({ email: form.email });
+        setAuthMode('verify');
+        setSuccess('We sent a 6-digit OTP to your email address.');
+      } else if (mode === 'verify') {
+        await verifyOTP({ email: form.email, otp: form.otp });
+        setAuthMode('reset');
+        setSuccess('OTP verified. Choose your new password.');
+      } else if (mode === 'reset') {
+        await resetPassword({ email: form.email, otp: form.otp, new_password: form.password });
+        setForm({ name: '', email: form.email, password: '', confirmPassword: '', otp: '', phone: '' });
+        setMode('login');
+        setSuccess('Password reset successfully. Please sign in with your new password.');
+      } else if (mode === 'login') {
         res = await loginUser({ email: form.email, password: form.password });
       } else {
         res = await registerUser({ ...form, role });
       }
-      const { access_token, user_id, name, role: userRole } = res.data;
-      login(access_token, { id: user_id, name, role: userRole, email: form.email });
-      navigate(userRole === 'merchant' ? '/merchant' : '/buyer');
+      if (res) {
+        const { access_token, user_id, name, role: userRole } = res.data;
+        login(access_token, { id: user_id, name, role: userRole, email: form.email });
+        navigate(userRole === 'merchant' ? '/merchant' : '/buyer');
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong. Please try again.');
     } finally {
@@ -134,17 +164,25 @@ export default function AuthPage() {
           </Box>
 
           {/* Mode Toggle */}
-          <Box sx={{ display: 'flex', gap: 1, mb: 3, bgcolor: 'background.default', borderRadius: 2, p: 0.5 }}>
-            {['login', 'register'].map((m) => (
-              <Button key={m} fullWidth
-                variant={mode === m ? 'contained' : 'text'}
-                onClick={() => { setMode(m); setError(''); }}
-                sx={{ borderRadius: 1.5, py: 1 }}
-              >
-                {m === 'login' ? 'Sign In' : 'Create Account'}
-              </Button>
-            ))}
-          </Box>
+          {['login', 'register'].includes(mode) ? (
+            <Box sx={{ display: 'flex', gap: 1, mb: 3, bgcolor: 'background.default', borderRadius: 2, p: 0.5 }}>
+              {['login', 'register'].map((m) => (
+                <Button key={m} fullWidth variant={mode === m ? 'contained' : 'text'}
+                  onClick={() => setAuthMode(m)} sx={{ borderRadius: 1.5, py: 1 }}>
+                  {m === 'login' ? 'Sign In' : 'Create Account'}
+                </Button>
+              ))}
+            </Box>
+          ) : (
+            <Box sx={{ mb: 3, textAlign: 'center' }}>
+              <Typography variant="h6" fontWeight={700}>
+                {mode === 'forgot' ? 'Reset your password' : mode === 'verify' ? 'Verify your OTP' : 'Set a new password'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mt={0.5}>
+                {mode === 'forgot' ? 'Enter your account email to receive an OTP.' : `For ${form.email}`}
+              </Typography>
+            </Box>
+          )}
 
           {/* Role Selector — register only */}
           {mode === 'register' && (
@@ -174,6 +212,7 @@ export default function AuthPage() {
           )}
 
           {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
+          {success && <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>{success}</Alert>}
 
           <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
 
@@ -195,15 +234,23 @@ export default function AuthPage() {
               </>
             )}
 
-            <TextField
-              label="Email Address *" name="email" type="email"
-              value={form.email} onChange={handleChange} required fullWidth
-              InputProps={{ startAdornment: <InputAdornment position="start"><EmailRounded color="action" fontSize="small" /></InputAdornment> }}
-            />
-
-            <Box>
+            {!['verify', 'reset'].includes(mode) && (
               <TextField
-                label="Password *" name="password"
+                label="Email Address *" name="email" type="email"
+                value={form.email} onChange={handleChange} required fullWidth
+                InputProps={{ startAdornment: <InputAdornment position="start"><EmailRounded color="action" fontSize="small" /></InputAdornment> }}
+              />
+            )}
+
+            {mode === 'verify' && (
+              <TextField label="6-digit OTP" name="otp" value={form.otp} onChange={handleChange}
+                required fullWidth autoFocus inputProps={{ inputMode: 'numeric', maxLength: 6, pattern: '\\d{6}' }}
+                helperText="Enter the code sent to your email." />
+            )}
+
+            {['login', 'register', 'reset'].includes(mode) && <Box>
+              <TextField
+                label={mode === 'reset' ? 'New Password *' : 'Password *'} name="password"
                 type={showPass ? 'text' : 'password'}
                 value={form.password} onChange={handleChange}
                 required fullWidth
@@ -235,16 +282,36 @@ export default function AuthPage() {
                   </Typography>
                 </Box>
               )}
-            </Box>
+            </Box>}
+
+            {mode === 'reset' && (
+              <TextField label="Confirm New Password *" name="confirmPassword"
+                type={showPass ? 'text' : 'password'} value={form.confirmPassword} onChange={handleChange}
+                required fullWidth
+                InputProps={{ startAdornment: <InputAdornment position="start"><LockRounded color="action" fontSize="small" /></InputAdornment> }} />
+            )}
+
+            {mode === 'login' && (
+              <Button variant="text" size="small" onClick={() => setAuthMode('forgot')} sx={{ alignSelf: 'flex-end', mt: -1 }}>
+                Forgot Password?
+              </Button>
+            )}
 
             <Button type="submit" variant="contained" fullWidth size="large"
               disabled={loading} sx={{ mt: 0.5, py: 1.5, fontSize: 15 }}>
               {loading
                 ? <CircularProgress size={24} color="inherit" />
-                : mode === 'login' ? 'Sign In' : `Create ${role === 'merchant' ? 'Merchant' : 'Buyer'} Account`}
+                : mode === 'login' ? 'Sign In'
+                  : mode === 'register' ? `Create ${role === 'merchant' ? 'Merchant' : 'Buyer'} Account`
+                    : mode === 'forgot' ? 'Send OTP'
+                      : mode === 'verify' ? 'Verify OTP' : 'Reset Password'}
             </Button>
+            {['forgot', 'verify', 'reset'].includes(mode) && (
+              <Button variant="text" onClick={() => setAuthMode('login')}>Back to Sign In</Button>
+            )}
           </Box>
 
+          {['login', 'register'].includes(mode) && <>
           <Divider sx={{ my: 2.5 }}><Chip label="Demo accounts" size="small" /></Divider>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button size="small" fullWidth variant="outlined"
@@ -256,6 +323,7 @@ export default function AuthPage() {
               🛒 Buyer Demo
             </Button>
           </Box>
+          </>}
 
         </CardContent>
       </Card>
