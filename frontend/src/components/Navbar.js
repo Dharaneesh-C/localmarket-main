@@ -14,11 +14,18 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useSettings } from '../context/SettingsContext';
 import { format } from 'timeago.js';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 
 export default function Navbar({ onOpenSettings }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    markAllRead,
+    markRead,
+    removeNotification,
+  } = useNotifications();
   const { darkMode, toggleDarkMode, language, toggleLanguage, t } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -102,12 +109,28 @@ export default function Navbar({ onOpenSettings }) {
                   alignItems: 'flex-start', gap: 1,
                 }}>
                 {!n.read && <FiberManualRecordRounded sx={{ color: 'primary.main', fontSize: 10, mt: 1 }} />}
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" fontWeight={600}>{n.title}</Typography>
-                  <Typography variant="caption" color="text.secondary">{n.body}</Typography>
-                  <Typography variant="caption" color="text.disabled" display="block">
-                    {n.timestamp ? format(n.timestamp) : 'just now'}
-                  </Typography>
+                <Box sx={{
+                  flex: 1,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                }}>
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>{n.title}</Typography>
+                    <Typography variant="caption" color="text.secondary">{n.body}</Typography>
+                    <Typography variant="caption" color="text.disabled" display="block">
+                      {n.timestamp ? format(n.timestamp) : 'just now'}
+                    </Typography>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeNotification(n.id);
+                    }}
+                  >
+                    <DeleteOutlineRoundedIcon fontSize="small" />
+                  </IconButton>
                 </Box>
               </ListItemButton>
             ))}

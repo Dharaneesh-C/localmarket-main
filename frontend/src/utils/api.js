@@ -116,6 +116,15 @@ export const getAdminRevenueChart = () => API.get('/admin/revenue-chart');
 // Order Chat
 export const sendMessage = (orderId, text) => API.post(`/orders/${orderId}/messages`, { text });
 export const getMessages = (orderId) => API.get(`/orders/${orderId}/messages`);
+// Notifications
+export const getNotifications = () => API.get('/notifications');
+export const markNotificationRead = (id) =>
+  API.put(`/notifications/read/${id}`);
+export const markAllNotificationsRead = () =>
+  API.put('/notifications/read-all');
+
+export const deleteNotificationApi = (id) =>
+  API.delete(`/notifications/${id}`);
 
 // Availability window check
 export const checkAvailability = () => API.post('/products/check-availability');
