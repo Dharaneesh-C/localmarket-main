@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 from auth_utils import get_current_user, require_merchant, require_buyer
+from fcm_service import send_push_notification
 from firebase_db import get_db
 from routes.notifications import store_notification
 from schemas import OrderCreate, OrderStatusUpdate, CODConfirm
@@ -29,6 +30,37 @@ def unflatten_order(order: dict) -> dict:
         except Exception:
             pass
     return result
+
+
+async def store_and_send_notification(recipient_id: str, notification: dict) -> None:
+    """Store a polling notification and attempt FCM delivery when a token exists."""
+    store_notification(recipient_id, notification)
+
+    try:
+        db = get_db()
+        user_doc = db.collection("users").document(recipient_id).get()
+        if not user_doc.exists:
+            return
+
+        user_data = user_doc.to_dict() or {}
+        fcm_token = user_data.get("fcm_token")
+        if not fcm_token:
+            return
+
+        data_payload = {}
+        for key, value in notification.items():
+            if key in {"title", "body"} or value is None:
+                continue
+            data_payload[key] = str(value)
+
+        await send_push_notification(
+            fcm_token,
+            notification.get("title", ""),
+            notification.get("body", ""),
+            data_payload,
+        )
+    except Exception as e:
+        print(f"Notification FCM delivery error: {e}")
 
 
 # ─── Buyer: Place an order ────────────────────────────────────────────────────
@@ -87,7 +119,7 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
         "total_price": data.total_price,
         "order_id": order_id,
     }
-    store_notification(data.merchant_id, notification)
+    await store_and_send_notification(data.merchant_id, notification)
 
     return unflatten_order(order_doc)
 
@@ -145,7 +177,7 @@ async def update_order_status(
         "body": f"{order_data.get('product_title')} — {data.status}",
         "status": data.status,
     }
-    store_notification(order_data["buyer_id"], notification)
+    await store_and_send_notification(order_data["buyer_id"], notification)
 
     return {"message": f"Order status updated to {data.status}"}
 
@@ -178,7 +210,7 @@ async def merchant_arrived(
         "alarm": True,
     }
 
-    store_notification(order_data["buyer_id"], notification)
+    await store_and_send_notification(order_data["buyer_id"], notification)
     
 
     return {"message": "Buyer has been alerted"}
@@ -264,7 +296,7 @@ async def confirm_payment(order_id: str, current_user=Depends(require_buyer)):
         "title": f"💵 Payment confirmed!",
         "body": f"{current_user['name']} confirmed cash payment for {order_data.get('product_title')}",
     }
-    store_notification(order_data["merchant_id"], notification)
+    await store_and_send_notification(order_data["merchant_id"], notification)
     return {"message": "Payment confirmed"}
 
 
@@ -301,7 +333,7 @@ async def cancel_order(order_id: str, current_user=Depends(require_buyer)):
         print(f"Stock restore error: {e}")
 
     # Notify merchant
-    store_notification(order_data["merchant_id"], {
+    await store_and_send_notification(order_data["merchant_id"], {
         "type": "order_cancelled",
         "order_id": order_id,
         "title": f"🚫 Order cancelled by {current_user['name']}",

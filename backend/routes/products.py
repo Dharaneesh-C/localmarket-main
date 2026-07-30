@@ -158,10 +158,14 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
         fcm_tokens = [b["fcm_token"] for b in buyers_to_notify if b.get("fcm_token")]
         if fcm_tokens:
             await send_multicast_notification(
-                fcm_tokens,
-                notification_payload["title"],
-                notification_payload["body"]
-            )
+    fcm_tokens,
+    notification_payload["title"],
+    notification_payload["body"],
+    {
+        "type": notification_payload["type"],
+        "product_id": notification_payload["product_id"],
+    }
+)
 
         print(f"📢 Notified {len(buyers_to_notify)} buyers")
     except Exception as e:

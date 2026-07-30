@@ -21,10 +21,22 @@ async def send_push_notification(fcm_token: str, title: str, body: str, data: di
         return False
     try:
         message = messaging.Message(
-            notification=messaging.Notification(title=title, body=body),
-            data={k: str(v) for k, v in (data or {}).items()},
-            token=fcm_token,
-        )
+    notification=messaging.Notification(
+        title=title,
+        body=body,
+    ),
+
+    android=messaging.AndroidConfig(
+        priority="high",
+        notification=messaging.AndroidNotification(
+            channel_id="nearsell_notifications",
+            sound="default",
+        ),
+    ),
+
+    data={k: str(v) for k, v in (data or {}).items()},
+    token=fcm_token,
+)
         response = messaging.send(message)
         print(f"FCM sent: {response}")
         return True

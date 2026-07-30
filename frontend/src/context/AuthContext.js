@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getMe, updateFCMToken, updateLocation } from '../utils/api';
+import { requestNotificationPermission } from '../utils/firebase';
 
 const AuthContext = createContext(null);
 
@@ -41,6 +42,23 @@ export function AuthProvider({ children }) {
       })
       .finally(() => setLoading(false));
   }, []);
+  useEffect(() => {
+  const setupFCM = async () => {
+    if (!user) return;
+
+    try {
+      const token = await requestNotificationPermission();
+
+      if (token) {
+        await saveFCMToken(token);
+      }
+    } catch (err) {
+      console.error("FCM setup failed:", err);
+    }
+  };
+
+  setupFCM();
+}, [user]);
 
   const login = (token, userData) => {
     localStorage.setItem('token', token);

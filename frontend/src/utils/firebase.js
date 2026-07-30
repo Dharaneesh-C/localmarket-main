@@ -35,9 +35,14 @@ export const requestNotificationPermission = async () => {
     const messaging = await getMessagingInstance();
     if (!messaging) return null;
 
-    const token = await getToken(messaging, {
-      vapidKey: process.env.REACT_APP_FIREBASE_VAPID_KEY,
-    });
+    const registration = await navigator.serviceWorker.register(
+  "/firebase-messaging-sw.js"
+);
+
+const token = await getToken(messaging, {
+  vapidKey: process.env.REACT_APP_FIREBASE_VAPID_KEY,
+  serviceWorkerRegistration: registration,
+});
     console.log('FCM Token:', token);
     return token;
   } catch (err) {

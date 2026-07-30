@@ -8,6 +8,7 @@ import {
   markAllNotificationsRead,
   deleteNotificationApi,
 } from '../utils/api';
+import { onForegroundMessage } from '../utils/firebase';
 
 const NotificationContext = createContext(null);
 
@@ -112,6 +113,41 @@ export function NotificationProvider({ children }) {
 
     loadNotifications();
   }, [user]);
+  useEffect(() => {
+  if (!user) return;
+
+  let unsubscribe = () => {};
+  let mounted = true;
+
+  const setupForegroundListener = async () => {
+    const listener = await onForegroundMessage((payload) => {
+      console.log("📩 Foreground FCM:", payload);
+
+      handleMessage({
+        id: Date.now().toString(),
+        read: false,
+        timestamp: new Date().toISOString(),
+        message: {
+          title: payload.notification?.title,
+          body: payload.notification?.body,
+          type: payload.data?.type,
+          product_id: payload.data?.product_id,
+        },
+      });
+    });
+
+    if (mounted) {
+      unsubscribe = listener;
+    }
+  };
+
+  setupForegroundListener();
+
+  return () => {
+    mounted = false;
+    unsubscribe();
+  };
+}, [user, handleMessage]);
   useEffect(() => {
     // Request browser notification permission for ALL users (both buyer and merchant)
     // Merchant needs it for new order alerts, buyer needs it for merchant_arrived alarm
