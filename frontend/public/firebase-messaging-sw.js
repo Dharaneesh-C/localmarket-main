@@ -14,11 +14,25 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   console.log('Background FCM message:', payload);
-  const { title, body } = payload.notification;
+
+  // FIX: the backend now sends DATA-ONLY messages (see fcm_service.py) so that
+  // Android's native app reliably routes every push through
+  // MyFirebaseMessagingService.onMessageReceived(), even when backgrounded/killed.
+  // A side effect: payload.notification no longer exists for ANY client, including
+  // this web/PWA service worker — it must read title/body from payload.data instead.
+  // Reading payload.notification here would throw (Cannot read properties of
+  // undefined) and silently drop the notification.
+  const title = payload.data?.title || 'NearSell';
+  const body = payload.data?.body || 'You have a new notification.';
+
   self.registration.showNotification(title, {
     body,
     icon: '/logo192.png',
     badge: '/logo192.png',
+    vibrate: [300, 200, 300, 200, 300],
+    // Same tag+order_id groups repeated arrival pings for the same order into
+    // one notification instead of stacking duplicates.
+    tag: payload.data?.order_id || undefined,
     data: payload.data,
   });
 });

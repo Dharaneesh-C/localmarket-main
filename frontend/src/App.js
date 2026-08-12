@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { SettingsProvider } from './context/SettingsContext';
 import AuthPage from './pages/AuthPage';
+import LandingPage from './pages/LandingPage';
 import MerchantPage from './pages/MerchantPage';
 import BuyerPage from './pages/BuyerPage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -119,6 +120,9 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={
+        user ? <Navigate to={user.role === 'merchant' ? '/merchant' : '/buyer'} replace /> : <LandingPage />
+      } />
+      <Route path="/auth" element={
         user ? <Navigate to={user.role === 'merchant' ? '/merchant' : '/buyer'} replace /> : <AuthPage />
       } />
       <Route path="/merchant" element={

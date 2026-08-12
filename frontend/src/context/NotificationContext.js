@@ -123,13 +123,17 @@ export function NotificationProvider({ children }) {
     const listener = await onForegroundMessage((payload) => {
       console.log("📩 Foreground FCM:", payload);
 
+      // FIX: backend now sends DATA-ONLY FCM messages (see fcm_service.py), so
+      // payload.notification no longer exists — title/body/type/product_id all
+      // live under payload.data now. Reading payload.notification here silently
+      // produced `undefined` title/body for every foreground push.
       handleMessage({
         id: Date.now().toString(),
         read: false,
         timestamp: new Date().toISOString(),
         message: {
-          title: payload.notification?.title,
-          body: payload.notification?.body,
+          title: payload.data?.title,
+          body: payload.data?.body,
           type: payload.data?.type,
           product_id: payload.data?.product_id,
         },

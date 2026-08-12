@@ -269,6 +269,34 @@ export default function SettingsPage({ onBack }) {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installed, setInstalled] = useState(false);
 
+  // Whether background push delivery is reliable (battery optimization
+  // disabled + notifications enabled). null = not running inside the Android
+  // app, so this section doesn't apply.
+  const [bgDeliveryReliable, setBgDeliveryReliable] = useState(null);
+
+  const isAndroid = typeof window.AndroidBridge !== 'undefined';
+
+  const checkBgDelivery = () => {
+    if (isAndroid && typeof window.AndroidBridge.isBackgroundDeliveryReliable === 'function') {
+      setBgDeliveryReliable(window.AndroidBridge.isBackgroundDeliveryReliable());
+    }
+  };
+
+  useEffect(() => {
+    checkBgDelivery();
+    // Re-check whenever the user comes back to this tab/page — e.g. after
+    // returning from the system battery-optimization settings screen.
+    const onVisible = () => { if (!document.hidden) checkBgDelivery(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []); // eslint-disable-line
+
+  const handleFixBgDelivery = () => {
+    if (isAndroid && typeof window.AndroidBridge.requestBackgroundDeliveryPermission === 'function') {
+      window.AndroidBridge.requestBackgroundDeliveryPermission();
+    }
+  };
+
   // Capture PWA install prompt
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
@@ -294,6 +322,31 @@ export default function SettingsPage({ onBack }) {
           <Typography variant="h5" fontWeight={700}>{t('settingsTitle')}</Typography>
           <Button variant="outlined" onClick={onBack}>← Back</Button>
         </Box>
+
+        {/* Background notification reliability — only relevant inside the Android app */}
+        {isAndroid && bgDeliveryReliable === false && (
+          <Alert
+            severity="warning"
+            sx={{ mb: 2 }}
+            action={
+              <Button color="inherit" size="small" onClick={handleFixBgDelivery}>
+                FIX NOW
+              </Button>
+            }
+          >
+            <Typography fontWeight={700}>Notifications may be delayed</Typography>
+            <Typography variant="body2">
+              NearSell doesn't have permission to run in the background on this
+              phone yet. Merchant-arrival alerts may be slow or missed while the
+              app is minimized. Tap "Fix Now" and choose "Allow" / "No restrictions".
+            </Typography>
+          </Alert>
+        )}
+        {isAndroid && bgDeliveryReliable === true && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Background notifications are set up correctly on this device.
+          </Alert>
+        )}
 
         {/* Appearance */}
         <Card sx={{ mb: 2 }}>

@@ -8,7 +8,7 @@ import {
   Visibility, VisibilityOff, StorefrontRounded,
   PhoneRounded, PersonRounded, EmailRounded, LockRounded,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loginUser, registerUser, forgotPassword, verifyOTP, resetPassword } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -59,8 +59,10 @@ function RoleCard({ value, selected, onClick, icon, title, description }) {
 export default function AuthPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [mode, setMode] = useState('login');
-  const [role, setRole] = useState('buyer');
+  const [searchParams] = useSearchParams();
+  // Coming from the landing page CTAs (e.g. "Sell on NearSell" → ?mode=signup&role=merchant)
+  const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'login');
+  const [role, setRole] = useState(searchParams.get('role') === 'merchant' ? 'merchant' : 'buyer');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

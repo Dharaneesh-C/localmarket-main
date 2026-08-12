@@ -92,6 +92,7 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
     db.collection("orders").document(order_id).set(flatten_order(order_doc))
 
     # Reduce stock if product has limited stock
+    low_stock_alert = None
     try:
         p_ref = db.collection("products").document(data.product_id)
         p_doc = p_ref.get()
@@ -101,6 +102,24 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
             if current_stock is not None:
                 new_stock = max(0, current_stock - int(data.quantity))
                 p_ref.update({"stock": new_stock, "is_active": new_stock > 0})
+
+                # LOW STOCK ALERT: notify the merchant once stock crosses the
+                # threshold (5 units), so they can restock before selling out.
+                # Only fires on the crossing (current_stock was above the
+                # threshold, new_stock is at/below it) so the merchant isn't
+                # re-notified on every subsequent order once already low.
+                LOW_STOCK_THRESHOLD = 5
+                if current_stock > LOW_STOCK_THRESHOLD >= new_stock:
+                    low_stock_alert = {
+                        "type": "low_stock",
+                        "product_id": data.product_id,
+                        "title": "⚠️ Low stock alert" if new_stock > 0 else "❌ Out of stock",
+                        "body": (
+                            f"{data.product_title} is out of stock."
+                            if new_stock <= 0
+                            else f"Only {new_stock} {data.unit} left of {data.product_title}. Restock soon!"
+                        ),
+                    }
     except Exception as e:
         print(f"Stock update error: {e}")
 
@@ -120,6 +139,9 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
         "order_id": order_id,
     }
     await store_and_send_notification(data.merchant_id, notification)
+
+    if low_stock_alert:
+        await store_and_send_notification(data.merchant_id, low_stock_alert)
 
     return unflatten_order(order_doc)
 

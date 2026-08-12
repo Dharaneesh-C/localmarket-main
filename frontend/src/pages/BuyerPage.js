@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Grid, Card, CardContent, Typography, Button,
   Chip, TextField, InputAdornment, CircularProgress, Alert,
@@ -421,7 +421,7 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
 // ─── Main BuyerPage ───────────────────────────────────────────────────────────
 export default function BuyerPage() {
   const { saveLocation } = useAuth();
-  const { notifications } = useNotifications();
+  const { notifications, markRead } = useNotifications();
   const { t } = useSettings();
   const [showSettings, setShowSettings] = useState(false);
   const [products, setProducts] = useState([]);
@@ -498,20 +498,55 @@ export default function BuyerPage() {
     );
   }, [loadProducts, saveLocation]);
 
+  // BUG FIX: previously this effect depended on [notifications.length] to detect
+  // "a new arrival happened." That's fragile — it only reacts to the array
+  // literally growing, but dismissAlarm() below never marked the notification
+  // read, so the app's read/unread state was never consistent with what the
+  // buyer actually saw. Combined with remounts (switching tabs) or multiple
+  // notifications landing in the same poll batch, the length-based check could
+  // miss a genuinely new arrival, leaving "Stop Alarm" never reappearing.
+  //
+  // FIX: track the id of the last notification we've already alerted on, in a
+  // ref. Any render where the newest unread 'merchant_arrived' notification has
+  // a DIFFERENT id than the last one we alerted on re-triggers the banner —
+  // this is correct regardless of array length transitions, batched inserts,
+  // or component remounts.
+  // BUG FIX (found after real-device testing): previously this only looked at
+  // notifications[0] — the single newest item. But buyers also receive other
+  // notification types (order_update, payment_confirmed, order_cancelled). If
+  // ANY of those arrives around the same time as/after a merchant_arrived
+  // notification, it gets prepended in front of it, pushing the arrival to
+  // index 1+ — and checking only index 0 would silently miss it. This is what
+  // caused "Stop Alarm sometimes appears, sometimes doesn't": it depended
+  // entirely on whether an unrelated notification happened to land on top.
+  //
+  // FIX: scan the whole array for the newest unread 'merchant_arrived' entry,
+  // not just the newest entry overall.
+  const lastAlertedIdRef = useRef(null);
+
   useEffect(() => {
-    if (notifications.length > 0) {
-      const latest = notifications[0];
-      if (latest && latest.type === 'merchant_arrived' && !latest.read) {
-        setAlarmNotif(latest);
-      }
-      if (userLocation) {
-        loadProducts(userLocation[0], userLocation[1]);
-      }
+    const latestArrival = notifications.find(
+      (n) => n.type === 'merchant_arrived' && !n.read
+    );
+
+    if (latestArrival && latestArrival.id !== lastAlertedIdRef.current) {
+      lastAlertedIdRef.current = latestArrival.id;
+      setAlarmNotif(latestArrival);
     }
-  }, [notifications.length]); // eslint-disable-line
+
+    if (userLocation) {
+      loadProducts(userLocation[0], userLocation[1]);
+    }
+  }, [notifications, userLocation, loadProducts]);
 
   const dismissAlarm = () => {
     stopAlarm();
+    // BUG FIX: previously the notification was never marked read here, so its
+    // `read` flag stayed false forever — inconsistent with what the buyer had
+    // actually acknowledged, both locally and on the backend.
+    if (alarmNotif?.id) {
+      markRead(alarmNotif.id);
+    }
     setAlarmNotif(null);
   };
 
@@ -668,7 +703,7 @@ export default function BuyerPage() {
                       <InputAdornment position="end">
                         {/* Language toggle */}
                         <Chip
-                          label={voiceLang === 'ta-IN' ? '🇭🇳 த' : '🇦🇳 EN'}
+                          label={voiceLang === 'ta-IN' ? '🇮🇳 த' : '🇮🇳 EN'}
                           size="small"
                           onClick={() => setVoiceLang(v => v === 'ta-IN' ? 'en-IN' : 'ta-IN')}
                           sx={{ mr: 0.5, fontSize: 10, cursor: 'pointer', height: 20 }}
@@ -891,10 +926,16 @@ export default function BuyerPage() {
                     <Fade in>
                       <Card sx={{ cursor: 'pointer', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 } }}>
                         {p.image_url ? (
-                          <Box component="img" src={p.image_url} alt={p.title}
-                            loading="lazy"
-                            sx={{ width: '100%', height: 130, objectFit: 'cover' }}
-                            onError={(e) => { e.target.style.display = 'none'; }} />
+                          <Box sx={{ position: 'relative' }}>
+                            <Box component="img" src={p.image_url} alt={p.title}
+                              loading="lazy"
+                              sx={{ width: '100%', height: 130, objectFit: 'cover' }}
+                              onError={(e) => { e.target.style.display = 'none'; }} />
+                            {p.images && p.images.length > 1 && (
+                              <Chip label={`📷 ${p.images.length}`} size="small"
+                                sx={{ position: 'absolute', bottom: 6, right: 6, bgcolor: 'rgba(0,0,0,0.6)', color: 'white', height: 20 }} />
+                            )}
+                          </Box>
                         ) : (
                           <Box sx={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center',
                             bgcolor: '#E1F5EE', fontSize: 38 }}>
@@ -1032,7 +1073,15 @@ export default function BuyerPage() {
               <IconButton onClick={() => setSelectedProduct(null)}><CloseRounded /></IconButton>
             </DialogTitle>
             <DialogContent>
-              {selectedProduct.image_url && (
+              {selectedProduct.images && selectedProduct.images.length > 1 ? (
+                <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', mb: 2, pb: 0.5, scrollSnapType: 'x mandatory' }}>
+                  {selectedProduct.images.map((url, idx) => (
+                    <Box key={idx} component="img" src={url} alt={`${selectedProduct.title} ${idx + 1}`}
+                      loading="lazy"
+                      sx={{ minWidth: '85%', height: 200, borderRadius: 2, objectFit: 'cover', scrollSnapAlign: 'start' }} />
+                  ))}
+                </Box>
+              ) : selectedProduct.image_url && (
                 <Box component="img" src={selectedProduct.image_url} alt={selectedProduct.title}
                   loading="lazy"
                   sx={{ width: '100%', borderRadius: 2, mb: 2, maxHeight: 200, objectFit: 'cover' }} />

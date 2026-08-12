@@ -47,6 +47,33 @@ export function AuthProvider({ children }) {
     if (!user) return;
 
     try {
+      // BUG FIX: when running inside the Android app, we must upload the NATIVE
+      // Android FCM token (from AndroidBridge.getFCMToken()), not the web/VAPID
+      // token from requestNotificationPermission(). The backend pushes to
+      // whichever token is stored — if it's the web token, the native
+      // MyFirebaseMessagingService (with the custom sound channel, wake lock,
+      // etc.) is never reached, because it's a completely different push
+      // registration living in the WebView's browser engine instead of the OS.
+      const isAndroid = typeof window.AndroidBridge !== 'undefined'
+        && typeof window.AndroidBridge.getFCMToken === 'function';
+
+      if (isAndroid) {
+        // Native token may not be fetched yet on first cold launch — retry a
+        // few times with a short delay instead of giving up after one empty read.
+        let token = '';
+        for (let attempt = 0; attempt < 6 && !token; attempt++) {
+          token = window.AndroidBridge.getFCMToken();
+          if (!token) await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (token) {
+          await saveFCMToken(token);
+        } else {
+          console.warn('Native FCM token not available yet after retries.');
+        }
+        return;
+      }
+
+      // Plain browser / PWA (not inside the Android app) — use web push.
       const token = await requestNotificationPermission();
 
       if (token) {

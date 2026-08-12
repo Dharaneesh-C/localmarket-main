@@ -49,28 +49,30 @@ const statusLabel = { pending: '⏳ Pending', accepted: '✅ Accepted', rejected
 
 const IMGBB_API_KEY = process.env.REACT_APP_IMGBB_API_KEY || 'f4509acb17c6d5497685c228f5267be8';
 const CATEGORIES = ['Vegetables & Fruits', 'Dairy', 'Handmade Goods', 'Cooked Food', 'Other'];
-const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '', stock: '', delivery_time_minutes: '', available_from: '', available_until: '' };
+const emptyForm = { title: '', description: '', price: '', unit: 'piece', category: 'Vegetables & Fruits', image_url: '', images: [], stock: '', delivery_time_minutes: '', available_from: '', available_until: '' };
 
 // ─── Image Uploader ───────────────────────────────────────────────────────────
 function ImageUploader({ value, onChange }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [preview, setPreview] = useState(value || null);
   const [error, setError] = useState('');
 
-  useEffect(() => { setPreview(value || null); }, [value]);
+  // BACKWARD-COMPAT WRAPPER: `value`/`onChange` here work with an array of
+  // URLs (up to 5 photos) instead of a single string, but the prop names are
+  // kept the same so existing call sites work with minimal changes.
+  const images = Array.isArray(value) ? value : (value ? [value] : []);
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { setError('Please select an image file.'); return; }
     if (file.size > 5 * 1024 * 1024) { setError('Image must be under 5MB.'); return; }
+    if (images.length >= 5) { setError('Maximum 5 photos per product.'); return; }
 
     setError('');
     setUploading(true);
     setUploadProgress(0);
-    setPreview(URL.createObjectURL(file));
 
     try {
       const formData = new FormData();
@@ -83,39 +85,42 @@ function ImageUploader({ value, onChange }) {
       if (!response.ok) throw new Error('Upload failed');
       const data = await response.json();
       if (!data.success) throw new Error(data.error?.message || 'Upload failed');
-      setPreview(data.data.url);
-      onChange(data.data.url);
+      onChange([...images, data.data.url]);
       setUploadProgress(100);
     } catch (err) {
       setError('Upload failed. Please try again.');
-      setPreview(null);
     } finally {
       setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
     }
   };
 
-  const handleRemove = () => {
-    setPreview(null);
-    onChange('');
-    setUploadProgress(0);
-    if (inputRef.current) inputRef.current.value = '';
+  const handleRemove = (index) => {
+    onChange(images.filter((_, i) => i !== index));
   };
 
   return (
     <Box>
       <Typography variant="subtitle2" fontWeight={600} color="text.secondary" mb={1}>
-        PRODUCT IMAGE (OPTIONAL)
+        PRODUCT PHOTOS (OPTIONAL, UP TO 5)
       </Typography>
-      {preview && (
-        <Box sx={{ position: 'relative', mb: 1.5, display: 'inline-block', width: '100%' }}>
-          <Box component="img" src={preview} alt="Preview"
-            sx={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 2, display: 'block' }} />
-          {!uploading && (
-            <IconButton size="small" onClick={handleRemove}
-              sx={{ position: 'absolute', top: 6, right: 6, bgcolor: 'rgba(0,0,0,0.55)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' } }}>
-              <CloseRounded fontSize="small" />
-            </IconButton>
-          )}
+      {images.length > 0 && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+          {images.map((url, idx) => (
+            <Box key={idx} sx={{ position: 'relative', width: 92, height: 92 }}>
+              <Box component="img" src={url} alt={`Product ${idx + 1}`}
+                sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 2, display: 'block' }} />
+              {idx === 0 && (
+                <Box sx={{ position: 'absolute', bottom: 2, left: 2, bgcolor: 'rgba(0,0,0,0.6)', color: 'white', fontSize: 10, px: 0.5, borderRadius: 0.5 }}>
+                  Cover
+                </Box>
+              )}
+              <IconButton size="small" onClick={() => handleRemove(idx)}
+                sx={{ position: 'absolute', top: 2, right: 2, bgcolor: 'rgba(0,0,0,0.55)', color: 'white', p: 0.3, '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' } }}>
+                <CloseRounded sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Box>
+          ))}
         </Box>
       )}
       {uploading && (
@@ -124,19 +129,15 @@ function ImageUploader({ value, onChange }) {
           <Typography variant="caption" color="text.secondary">Uploading... {uploadProgress}%</Typography>
         </Box>
       )}
-      {!preview && !uploading && (
+      {images.length < 5 && !uploading && (
         <Box onClick={() => inputRef.current?.click()}
-          sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 2, p: 3, textAlign: 'center', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: '#E1F5EE' } }}>
-          <CloudUploadRounded sx={{ fontSize: 36, color: 'text.disabled', mb: 1 }} />
-          <Typography variant="body2" color="text.secondary">Click to upload image</Typography>
-          <Typography variant="caption" color="text.disabled">JPG, PNG, WEBP — max 5MB</Typography>
+          sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 2, p: 2, textAlign: 'center', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: '#E1F5EE' } }}>
+          <CloudUploadRounded sx={{ fontSize: 30, color: 'text.disabled', mb: 0.5 }} />
+          <Typography variant="body2" color="text.secondary">
+            {images.length === 0 ? 'Click to upload a photo' : `Add another photo (${images.length}/5)`}
+          </Typography>
+          <Typography variant="caption" color="text.disabled">JPG, PNG, WEBP — max 5MB each. First photo is the cover image.</Typography>
         </Box>
-      )}
-      {preview && !uploading && (
-        <Button size="small" variant="outlined" startIcon={<CloudUploadRounded />}
-          onClick={() => inputRef.current?.click()} sx={{ mt: 0.5 }}>
-          Change Image
-        </Button>
       )}
       <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
       {error && <Alert severity="error" sx={{ mt: 1 }} onClose={() => setError('')}>{error}</Alert>}
@@ -400,6 +401,7 @@ export default function MerchantPage() {
       unit: product.unit,
       category: product.category,
       image_url: product.image_url || '',
+      images: product.images && product.images.length ? product.images : (product.image_url ? [product.image_url] : []),
       stock: product.stock ?? '',
       delivery_time_minutes: product.delivery_time_minutes ?? '',
       available_from: product.available_from || '',
@@ -449,7 +451,10 @@ export default function MerchantPage() {
   };
 
   const handleDelete = async (productId) => {
-    if (!window.confirm('Delete this product?')) return;
+    // Backend now soft-deletes (is_active: false) instead of a hard delete,
+    // to keep past order history intact. The product will show as "Paused"
+    // in this list afterward and can be reactivated with the toggle if needed.
+    if (!window.confirm('Remove this product from your store? Buyers won\'t see it anymore. You can bring it back later from the Active/Paused toggle.')) return;
     try {
       await deleteProduct(productId);
       loadData();
@@ -609,10 +614,16 @@ export default function MerchantPage() {
                   <Grid item xs={12} sm={6} md={4} key={p.id}>
                     <Card>
                       {p.image_url && (
-                        <Box component="img" src={p.image_url} alt={p.title}
-                          loading="lazy"
-                          sx={{ width: '100%', height: 140, objectFit: 'cover' }}
-                          onError={(e) => { e.target.style.display = 'none'; }} />
+                        <Box sx={{ position: 'relative' }}>
+                          <Box component="img" src={p.image_url} alt={p.title}
+                            loading="lazy"
+                            sx={{ width: '100%', height: 140, objectFit: 'cover' }}
+                            onError={(e) => { e.target.style.display = 'none'; }} />
+                          {p.images && p.images.length > 1 && (
+                            <Chip label={`+${p.images.length - 1} photo${p.images.length > 2 ? 's' : ''}`} size="small"
+                              sx={{ position: 'absolute', bottom: 6, right: 6, bgcolor: 'rgba(0,0,0,0.6)', color: 'white' }} />
+                          )}
+                        </Box>
                       )}
                       <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
@@ -770,8 +781,8 @@ export default function MerchantPage() {
             </Grid>
             <Grid item xs={12}>
               <ImageUploader
-                value={form.image_url}
-                onChange={(url) => setForm({ ...form, image_url: url })}
+                value={form.images}
+                onChange={(images) => setForm({ ...form, images, image_url: images[0] || '' })}
               />
             </Grid>
             {!editProduct && (

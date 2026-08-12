@@ -79,7 +79,8 @@ class ProductCreate(BaseModel):
     price: float
     unit: str = "piece"
     category: ProductCategory
-    image_url: Optional[str] = None
+    image_url: Optional[str] = None  # kept for backward compatibility — first entry of `images`
+    images: Optional[List[str]] = None  # up to 5 photo URLs
     delivery_area: Optional[DeliveryArea] = None   # optional — radius used instead
     delivery_radius_km: Optional[float] = 5.0      # radius-based delivery zone
     merchant_location: GeoLocation
@@ -96,6 +97,7 @@ class ProductUpdate(BaseModel):
     unit: Optional[str] = None
     category: Optional[ProductCategory] = None
     image_url: Optional[str] = None
+    images: Optional[List[str]] = None
     is_active: Optional[bool] = None
     stock: Optional[int] = None
     available_from: Optional[str] = None
@@ -120,6 +122,7 @@ class ProductResponse(BaseModel):
     unit: str
     category: str
     image_url: Optional[str]
+    images: Optional[List[str]] = None
     merchant_id: str
     merchant_name: str
     merchant_phone: Optional[str]

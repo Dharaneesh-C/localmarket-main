@@ -65,6 +65,11 @@ def unflatten_from_firestore(data: dict) -> dict:
 def serialize_product(p, distance_km=None):
     p = unflatten_from_firestore(p)
     stock = p.get("stock")
+    # Backward compatibility: older products only have a single image_url and
+    # no images list. New products store both (images[0] == image_url).
+    images = p.get("images")
+    if not images:
+        images = [p["image_url"]] if p.get("image_url") else []
     return {
         "id": p["id"],
         "title": p["title"],
@@ -72,7 +77,8 @@ def serialize_product(p, distance_km=None):
         "price": p["price"],
         "unit": p.get("unit", "piece"),
         "category": p["category"],
-        "image_url": p.get("image_url"),
+        "image_url": p.get("image_url") or (images[0] if images else None),
+        "images": images,
         "merchant_id": p["merchant_id"],
         "merchant_name": p.get("merchant_name", ""),
         "merchant_phone": p.get("merchant_phone"),
@@ -98,9 +104,18 @@ async def create_product(data: ProductCreate, current_user=Depends(require_merch
     db = get_db()
     product_id = str(uuid.uuid4())
 
+    # Normalize images/image_url so both are always populated consistently,
+    # regardless of which one the client sent (older clients may only send
+    # image_url; the multi-image uploader sends `images`).
+    images = data.images or ([data.image_url] if data.image_url else [])
+    images = images[:5]  # cap at 5 photos per product
+    image_url = images[0] if images else None
+
     raw_doc = {
         "id": product_id,
         **data.model_dump(),
+        "image_url": image_url,
+        "images": images,
         "merchant_id": current_user["id"],
         "merchant_name": current_user["name"],
         "merchant_phone": current_user.get("phone"),
@@ -230,6 +245,12 @@ async def update_product(product_id: str, data: ProductUpdate, current_user=Depe
     # Use model_dump(exclude_unset=True) so only explicitly-provided fields are updated.
     # This correctly handles is_active=False, stock=0 — previously filtered out by `if v is not None`.
     update_data = {k: v for k, v in data.model_dump(exclude_unset=True).items()}
+    # Keep image_url/images consistent if either was provided.
+    if "images" in update_data and update_data["images"] is not None:
+        update_data["images"] = update_data["images"][:5]
+        update_data["image_url"] = update_data["images"][0] if update_data["images"] else None
+    elif "image_url" in update_data and "images" not in update_data:
+        update_data["images"] = [update_data["image_url"]] if update_data["image_url"] else []
     if update_data:
         p_ref.update(update_data)
     return {"message": "Product updated"}
@@ -242,5 +263,11 @@ async def delete_product(product_id: str, current_user=Depends(require_merchant)
     p = p_ref.get()
     if not p.exists or p.to_dict().get("merchant_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Product not found")
-    p_ref.delete()
-    return {"message": "Product deleted"}
+    # BUG FIX: previously this called p_ref.delete(), a permanent Firestore
+    # delete. Any past order referencing this product_id would then have a
+    # dangling reference — order history/receipts would show a broken/missing
+    # product forever. Soft-delete (is_active=False) instead: the product
+    # disappears from buyer browsing (GET /products already filters on
+    # is_active == True) but stays intact for existing order records.
+    p_ref.update({"is_active": False})
+    return {"message": "Product removed from listings"}
