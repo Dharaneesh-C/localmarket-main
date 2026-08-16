@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Box, Card, CardContent, TextField, Button, Typography,
   Alert, CircularProgress, InputAdornment, IconButton,
-  Divider, Chip, LinearProgress,
+  LinearProgress,
 } from '@mui/material';
 import {
   Visibility, VisibilityOff, StorefrontRounded,
@@ -61,7 +61,12 @@ export default function AuthPage() {
   const { login } = useAuth();
   const [searchParams] = useSearchParams();
   // Coming from the landing page CTAs (e.g. "Sell on NearSell" → ?mode=signup&role=merchant)
-  const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'login');
+  // BUG FIX: the internal mode for the signup form is called 'register', not
+  // 'signup'. Setting state to the literal string 'signup' matched none of the
+  // mode checks below, so it silently fell through to the password-reset UI
+  // (no email/password fields, just "Set a new password"). Map the landing
+  // page's ?mode=signup query param to the correct internal mode: 'register'.
+  const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'register' : 'login');
   const [role, setRole] = useState(searchParams.get('role') === 'merchant' ? 'merchant' : 'buyer');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -312,20 +317,6 @@ export default function AuthPage() {
               <Button variant="text" onClick={() => setAuthMode('login')}>Back to Sign In</Button>
             )}
           </Box>
-
-          {['login', 'register'].includes(mode) && <>
-          <Divider sx={{ my: 2.5 }}><Chip label="Demo accounts" size="small" /></Divider>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button size="small" fullWidth variant="outlined"
-              onClick={() => { setForm({ email: 'merchant@demo.com', password: 'demo123', name: '', phone: '' }); setMode('login'); }}>
-              🏪 Merchant Demo
-            </Button>
-            <Button size="small" fullWidth variant="outlined"
-              onClick={() => { setForm({ email: 'buyer@demo.com', password: 'demo123', name: '', phone: '' }); setMode('login'); }}>
-              🛒 Buyer Demo
-            </Button>
-          </Box>
-          </>}
 
         </CardContent>
       </Card>

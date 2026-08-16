@@ -269,5 +269,13 @@ async def delete_product(product_id: str, current_user=Depends(require_merchant)
     # product forever. Soft-delete (is_active=False) instead: the product
     # disappears from buyer browsing (GET /products already filters on
     # is_active == True) but stays intact for existing order records.
-    p_ref.update({"is_active": False})
+    #
+    # BUG FIX (audit): availability.py's periodic check_and_pause_products
+    # job also flips is_active back to True for any product whose time
+    # window is back "in range", using the same is_active field. Without a
+    # separate marker, a soft-deleted product with an availability window
+    # would silently be resurrected on the buyer feed the next time that
+    # job ran. "deleted": True distinguishes a real deletion from a
+    # window-based pause so the availability job can skip it.
+    p_ref.update({"is_active": False, "deleted": True})
     return {"message": "Product removed from listings"}

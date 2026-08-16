@@ -26,6 +26,9 @@ async def check_and_pause_products(_=Depends(require_merchant)):
 
     for p_doc in products:
         p = p_doc.to_dict()
+        if p.get("deleted"):
+            continue  # soft-deleted product — never resurrect it here
+
         avail_from = p.get("available_from_minutes")   # minutes since midnight
         avail_until = p.get("available_until_minutes")
 

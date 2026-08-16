@@ -1,25 +1,29 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = 'nearsell-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/static/js/main.chunk.js',
-  '/static/js/bundle.js',
-  '/manifest.json',
-];
+// BUG FIX: CACHE_NAME was a hardcoded string ('nearsell-v1') that never
+// changed between deploys, and index.html (an unhashed URL) was in
+// STATIC_ASSETS. Every deploy produces a new content-hashed JS bundle
+// (e.g. main.abc123.js), but index.html is what references that hash —
+// so once index.html got cached once, phones kept serving that stale
+// index.html forever, which pointed at the OLD JS bundle. Code fixes
+// (like the ?mode=signup routing fix) would ship correctly to Vercel but
+// never actually reach anyone whose browser/PWA had already cached the
+// old index.html. This is why "works on laptop, broken on phone" — the
+// laptop's cache happened to be cleared/newer, the phone's wasn't.
+//
+// Fix: bump this on every meaningful SW change, AND — more importantly —
+// never cache index.html / navigation requests at all. Only long-lived,
+// content-hashed static assets (JS/CSS under /static/) are safe to
+// cache, because their URL itself changes when the content changes.
+const CACHE_NAME = 'nearsell-v2-no-html-cache';
 
-// ─── Install: cache static assets ────────────────────────────────────────────
+// ─── Install ──────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch(() => {});
-    })
-  );
   self.skipWaiting();
 });
 
-// ─── Activate: clean old caches ──────────────────────────────────────────────
+// ─── Activate: clean out every old cache (including the old v1 that may
+// still be holding a stale index.html on returning users' devices) ────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -29,23 +33,36 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// ─── Fetch: network first, fallback to cache ─────────────────────────────────
+// ─── Fetch ────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET and API calls
-  if (event.request.method !== 'GET') return;
-  if (event.request.url.includes('/api/')) return;
+  const { request } = event;
 
+  // Skip non-GET and API calls
+  if (request.method !== 'GET') return;
+  if (request.url.includes('/api/')) return;
+
+  // Navigation requests (the HTML document itself, i.e. index.html via the
+  // SPA rewrite) — ALWAYS go to the network. Never serve a cached copy,
+  // even as an offline fallback, because a stale index.html silently
+  // un-ships every JS fix that's already deployed. If the network is down,
+  // let it fail naturally rather than resurrect old code.
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  // Everything else (content-hashed JS/CSS/images under /static/) is safe
+  // to cache long-term, since a code change always produces a new URL.
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((response) => {
-        // Cache successful responses
         if (response && response.status === 200) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => caches.match(request))
   );
 });
 
