@@ -24,7 +24,6 @@ A full-stack platform where merchants post products and notify nearby buyers in 
 localmart/
 ├── backend/
 │   ├── main.py                  # FastAPI app entry point
-│   ├── database.py              # MongoDB connection + indexes
 │   ├── config.py                # Environment settings
 │   ├── schemas.py               # Pydantic request/response models
 │   ├── auth_utils.py            # JWT helpers, password hashing
