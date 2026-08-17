@@ -10,7 +10,6 @@ class Settings(BaseSettings):
 
     # Firebase — env var takes priority, file is fallback
     FIREBASE_CREDENTIALS: Optional[str] = None
-    FIREBASE_CREDENTIALS_PATH: Optional[str] = "service-account.json"
 
     # Frontend / CORS
     CORS_ORIGINS: str = "*"
