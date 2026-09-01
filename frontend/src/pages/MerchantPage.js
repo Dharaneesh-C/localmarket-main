@@ -3,13 +3,14 @@ import {
   Box, Grid, Card, CardContent, Typography, Button, TextField,
   MenuItem, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Alert, CircularProgress, Switch,
-  FormControlLabel, Divider, Avatar, LinearProgress, Tab, Tabs,
+  FormControlLabel, Divider, Avatar, LinearProgress, Tab, Tabs, useMediaQuery,
 } from '@mui/material';
 import {
   AddRounded, EditRounded, DeleteRounded, StorefrontRounded,
   InventoryRounded, CheckCircleRounded, PauseCircleRounded,
   CloudUploadRounded, CloseRounded, ListAltRounded,
   PersonPinCircleRounded, BarChartRounded, DownloadRounded,
+  ChatBubbleRounded, SettingsRounded, ChevronRightRounded,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -17,7 +18,7 @@ import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../context/AuthContext';
 import {
   createProduct, getMyProducts, updateProduct, deleteProduct,
-  getMerchantDashboard, getMerchantOrders, updateOrderStatus, merchantArrived,
+  getMerchantDashboard, getMerchantOrders, updateOrderStatus, merchantArrived, getMessages,
 } from '../utils/api';
 import MerchantRouteMap from '../components/MerchantRouteMap';
 import OrderChat from '../components/OrderChat';
@@ -30,6 +31,7 @@ import { useLiveLocationBroadcast } from '../hooks/useLiveLocationBroadcast';
 import { useSettings } from '../context/SettingsContext';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
+import MerchantBottomNav from '../components/MerchantBottomNav';
 
 // Fix leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -341,8 +343,142 @@ function OrdersTab() {
 }
 
 // ─── Main MerchantPage ────────────────────────────────────────────────────────
+// ─── Merchant Chat View (dedicated mobile Chat tab) ──────────────────────
+function MerchantChatView() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openOrderId, setOpenOrderId] = useState(null);
+  const [previews, setPreviews] = useState({});
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await getMerchantOrders();
+        const eligible = (res.data || []).filter(o => ['pending', 'accepted'].includes(o.status));
+        setOrders(eligible);
+
+        const results = await Promise.all(eligible.map(async (o) => {
+          try {
+            const r = await getMessages(o.id);
+            const msgs = r.data || [];
+            const last = msgs[msgs.length - 1];
+            return [o.id, {
+              lastText: last ? last.text : 'No messages yet',
+              awaitingReply: !!last && last.sender_role !== 'merchant',
+            }];
+          } catch {
+            return [o.id, { lastText: '', awaitingReply: false }];
+          }
+        }));
+        setPreviews(Object.fromEntries(results));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <Box sx={{ mt: 2 }}><OrderCardSkeleton count={3} /></Box>;
+
+  if (orders.length === 0) {
+    return (
+      <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
+        <ChatBubbleRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
+        <Typography variant="h6" color="text.secondary">No conversations yet</Typography>
+        <Typography variant="body2" color="text.disabled">
+          Chats for your incoming and active orders will appear here.
+        </Typography>
+      </Card>
+    );
+  }
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      {orders.map(o => {
+        const isOpen = openOrderId === o.id;
+        const preview = previews[o.id] || {};
+        return (
+          <Card key={o.id} sx={{ mb: 1.5 }}>
+            <Box
+              onClick={() => setOpenOrderId(isOpen ? null : o.id)}
+              sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer' }}
+            >
+              <Box sx={{
+                width: 40, height: 40, borderRadius: '50%', bgcolor: '#FF6B35', color: 'white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0,
+              }}>
+                {o.buyer_name?.[0]?.toUpperCase() || 'B'}
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography fontWeight={700} fontSize={14} noWrap>{o.buyer_name}</Typography>
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                  {o.product_title} • Order #{o.id.slice(-6)}
+                </Typography>
+                {preview.lastText && (
+                  <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block' }}>
+                    {preview.lastText}
+                  </Typography>
+                )}
+              </Box>
+              {preview.awaitingReply && (
+                <Chip label="Reply" size="small" color="secondary" sx={{ fontSize: 10, height: 20 }} />
+              )}
+            </Box>
+            {isOpen && (
+              <Box sx={{ px: 1.5, pb: 1.5 }}>
+                <OrderChat orderId={o.id} orderStatus={o.status} forceOpen />
+              </Box>
+            )}
+          </Card>
+        );
+      })}
+    </Box>
+  );
+}
+
+function MerchantProfileHub({ user, onOpenProfile, onOpenAnalytics, onOpenSettings }) {
+  const items = [
+    { label: 'Merchant Profile', sub: 'Store info, bio, photo, working hours', icon: StorefrontRounded, onClick: onOpenProfile },
+    { label: 'Analytics', sub: 'Sales & performance', icon: BarChartRounded, onClick: onOpenAnalytics, color: '#378ADD' },
+    { label: 'Settings', sub: 'App preferences', icon: SettingsRounded, onClick: onOpenSettings },
+  ];
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Card sx={{ mb: 2 }}>
+        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.main', fontSize: 22 }}>
+            {user?.name?.[0]?.toUpperCase() || 'M'}
+          </Avatar>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography fontWeight={700} noWrap>{user?.name}</Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>{user?.email}</Typography>
+          </Box>
+        </CardContent>
+      </Card>
+      {items.map(({ label, sub, icon: Icon, onClick, color }) => (
+        <Card key={label} sx={{ mb: 1.2, cursor: 'pointer' }} onClick={onClick}>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: '12px !important' }}>
+            <Avatar sx={{ bgcolor: (color || '#1D9E75') + '20', color: color || '#1D9E75', width: 36, height: 36 }}>
+              <Icon fontSize="small" />
+            </Avatar>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography fontWeight={600} fontSize={14}>{label}</Typography>
+              <Typography variant="caption" color="text.secondary">{sub}</Typography>
+            </Box>
+            <ChevronRightRounded sx={{ color: 'text.disabled' }} />
+          </CardContent>
+        </Card>
+      ))}
+    </Box>
+  );
+}
+
 export default function MerchantPage() {
   const { user } = useAuth();
+  const isMobile = useMediaQuery('(max-width:599.95px)');
+  const [mainView, setMainView] = useState('home');
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
   const [orders, setOrders] = useState([]);
@@ -532,11 +668,11 @@ export default function MerchantPage() {
 
         {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
 
-        {/* Tabs */}
+        {/* Tabs — desktop only; mobile uses the fixed bottom nav instead */}
         {(() => {
           const pendingCount = orders.filter(o => o.status === 'pending').length;
           return (
-            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
+            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3, display: { xs: 'none', sm: 'flex' } }}>
               <Tab label="My Products" icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
               <Tab
                 label={
@@ -560,11 +696,24 @@ export default function MerchantPage() {
           );
         })()}
 
-        {/* ── Orders Tab ── */}
-        {activeTab === 1 && <OrdersTab />}
+        {/* ── Orders content ── */}
+        {(isMobile ? mainView === 'orders' : activeTab === 1) && <OrdersTab />}
 
-        {/* ── Products Tab ── */}
-        {activeTab === 0 && (
+        {/* ── Chat tab (mobile only) ── */}
+        {isMobile && mainView === 'chat' && <MerchantChatView />}
+
+        {/* ── Profile tab (mobile only) ── */}
+        {isMobile && mainView === 'profile' && (
+          <MerchantProfileHub
+            user={user}
+            onOpenProfile={() => setShowProfile(true)}
+            onOpenAnalytics={() => setShowAnalytics(true)}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        )}
+
+        {/* ── Home / Products content ── */}
+        {(isMobile ? mainView === 'home' : activeTab === 0) && (
           <>
             {/* Stats */}
             {(() => {
@@ -684,6 +833,17 @@ export default function MerchantPage() {
         )}
 
       </Box>
+
+      {/* Fixed mobile bottom navigation. Hidden on desktop via its own
+          responsive sx — desktop keeps the Tabs above, unchanged. */}
+      <MerchantBottomNav
+        value={mainView}
+        onChange={setMainView}
+        pendingOrdersCount={orders.filter(o => o.status === 'pending').length}
+        chatBadgeCount={0}
+      />
+      {/* Bottom padding so page content isn't hidden behind the fixed nav on mobile */}
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, height: 64 }} />
 
       {/* Bulk Upload Dialog */}
       <Dialog open={bulkOpen} onClose={() => setBulkOpen(false)} maxWidth="md" fullWidth
