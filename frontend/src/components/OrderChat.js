@@ -7,13 +7,17 @@ import { SendRounded } from '@mui/icons-material';
 import { sendMessage, getMessages } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
-export default function OrderChat({ orderId, orderStatus, onUnreadChange }) {
+export default function OrderChat({ orderId, orderStatus, onUnreadChange, forceOpen = false }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
+  // `forceOpen`: used by the dedicated Chat page (ChatListView) where a
+  // conversation is opened full-width and the collapsible header doesn't
+  // make sense — the existing collapse/expand behavior is unchanged for the
+  // My Orders card usage.
+  const [open, setOpen] = useState(forceOpen);
   const [lastReadCount, setLastReadCount] = useState(0);
   const bottomRef = useRef(null);
   const intervalRef = useRef(null);

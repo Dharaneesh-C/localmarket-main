@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import OAuth2PasswordRequestForm
+
 from firebase_db import get_db
 from schemas import (
     UserRegister,
@@ -177,7 +179,46 @@ async def login(data: UserLogin):
         "role": user["role"],
         "name": user["name"],
     }
+@router.post("/token")
+async def swagger_login(
+    form_data: OAuth2PasswordRequestForm = Depends()
+):
+    db = get_db()
 
+    users = (
+        db.collection("users")
+        .where("email", "==", form_data.username)
+        .get()
+    )
+
+    if not users:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = users[0].to_dict()
+
+    if not verify_password(
+        form_data.password,
+        user["password"]
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = create_access_token({
+        "sub": user["id"],
+        "role": user["role"],
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+    }
 
 @router.get("/me")
 async def get_me(current_user=Depends(get_current_user)):

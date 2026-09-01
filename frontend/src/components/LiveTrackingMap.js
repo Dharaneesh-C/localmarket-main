@@ -63,7 +63,13 @@ function MoveMap({ center }) {
   return null;
 }
 
-export default function LiveTrackingMap({ order, buyerLocation }) {
+export default function LiveTrackingMap({ order, buyerLocation, embedded = false }) {
+  // `embedded`: when this map is rendered directly beneath another orange
+  // card (e.g. the "merchant is on the way" banner on the Home tab), it
+  // drops its own border/rounded-top/margin so the banner and map read as
+  // ONE connected card instead of two separate orange boxes touching each
+  // other — which is what caused the visual overlap reported during mobile
+  // testing. Standalone usage (e.g. inside My Orders) is unaffected.
   const [merchantPos, setMerchantPos] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [loadingFirst, setLoadingFirst] = useState(true);
@@ -95,7 +101,15 @@ export default function LiveTrackingMap({ order, buyerLocation }) {
   const mapCenter = merchantPos || buyerLocation || [11.3027, 76.9389];
 
   return (
-    <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '2px solid #FF6B35', mb: 2 }}>
+    <Box sx={{
+      borderRadius: embedded ? '0 0 8px 8px' : 2,
+      overflow: 'hidden',
+      border: embedded ? 'none' : '2px solid #FF6B35',
+      borderTop: embedded ? '1px solid rgba(255,255,255,0.35)' : undefined,
+      mb: embedded ? 0 : 2,
+      width: '100%',
+      boxSizing: 'border-box',
+    }}>
       {/* Header */}
       <Box sx={{
         bgcolor: '#FF6B35', color: 'white',
@@ -130,7 +144,7 @@ export default function LiveTrackingMap({ order, buyerLocation }) {
 
       {/* Map */}
       {loadingFirst ? (
-        <Box sx={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
+        <Box sx={{ height: { xs: 220, sm: 280 }, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
           <CircularProgress size={32} />
           <Typography variant="body2" color="text.secondary" ml={2}>
             Waiting for merchant location...
@@ -140,7 +154,7 @@ export default function LiveTrackingMap({ order, buyerLocation }) {
         <MapContainer
           center={mapCenter}
           zoom={15}
-          style={{ width: '100%', height: 280 }}
+          style={{ width: '100%', height: window.innerWidth < 600 ? 220 : 280 }}
           scrollWheelZoom={false}
           zoomControl={false}
         >

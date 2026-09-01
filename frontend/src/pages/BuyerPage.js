@@ -4,7 +4,7 @@ import {
   Chip, TextField, InputAdornment, CircularProgress, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
   Divider, Fade, Tab, Tabs, Select, MenuItem, FormControl,
-  InputLabel, Collapse, Slider, Rating,
+  InputLabel, Collapse, Slider, Rating, useMediaQuery,
 } from '@mui/material';
 import {
   SearchRounded, CloseRounded,
@@ -13,12 +13,14 @@ import {
   FilterAltRounded, SortRounded, TuneRounded,
   FavoriteRounded, FavoriteBorderRounded, RepeatRounded, PaymentsRounded,
   MicRounded, MicOffRounded, CancelRounded, PhoneRounded,
+  PlaceRounded, ChatBubbleRounded,
 } from '@mui/icons-material';
 
 import Navbar from '../components/Navbar';
+import BottomNav from '../components/BottomNav';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses, cancelOrder } from '../utils/api';
+import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses, cancelOrder, getMessages } from '../utils/api';
 
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
@@ -88,7 +90,15 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
   };
 
   return (
-    <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+    <Dialog open onClose={onClose} fullWidth
+      maxWidth="xs"
+      // BUG FIX (mobile UI audit): fullScreen on very small phones prevents
+      // the modal's own scroll container fighting the viewport, and the
+      // Slide-free default transition keeps this simple. maxWidth="xs" still
+      // caps width on tablets/desktop; on phones the Paper's width:100%
+      // (from fullWidth) plus this sx already constrains it — the real fix
+      // for content overflow is inside (word-wrap, box-sizing), not here.
+      PaperProps={{ sx: { borderRadius: 3, width: '100%', maxWidth: { xs: '100%', sm: 444 }, m: { xs: 1.5, sm: 3 } } }}>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography fontWeight={700}>Place Order</Typography>
         <IconButton onClick={onClose}><CloseRounded /></IconButton>
@@ -123,15 +133,26 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
 
         {/* Delivery location picker */}
         <Typography variant="subtitle2" fontWeight={600} mb={1}>📍 Delivery Location</Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8, mb: 2 }}>
+        {/* BUG FIX (mobile UI audit): these cards previously used
+            Typography `noWrap`, which sets white-space: nowrap with no
+            overflow handling on the parent — so a long saved address (e.g.
+            a full village/district/state/pincode string) rendered on a
+            single line and spilled out past the card's right edge instead
+            of wrapping, getting visually clipped by the dialog on narrow
+            Android screens. Fixed by wrapping normally (word-break +
+            overflow-wrap) and making sure each card is a proper
+            box-sizing: border-box block that can't exceed the dialog width. */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8, mb: 2, width: '100%' }}>
           <Box onClick={() => setSelectedAddress(null)} sx={{
             p: 1.5, borderRadius: 2, cursor: 'pointer', border: '2px solid',
             borderColor: selectedAddress === null ? 'primary.main' : 'divider',
             bgcolor: selectedAddress === null ? '#E1F5EE' : 'transparent',
+            width: '100%', boxSizing: 'border-box', overflow: 'hidden',
           }}>
             <Typography variant="body2" fontWeight={600}>📱 Current GPS location</Typography>
             {userLocation && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary"
+                sx={{ display: 'block', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                 {userLocation[0].toFixed(4)}, {userLocation[1].toFixed(4)}
               </Typography>
             )}
@@ -141,11 +162,18 @@ function OrderDialog({ product, userLocation, onClose, onSuccess }) {
               p: 1.5, borderRadius: 2, cursor: 'pointer', border: '2px solid',
               borderColor: selectedAddress?.id === a.id ? 'primary.main' : 'divider',
               bgcolor: selectedAddress?.id === a.id ? '#E1F5EE' : 'transparent',
+              width: '100%', boxSizing: 'border-box', overflow: 'hidden',
             }}>
               <Typography variant="body2" fontWeight={600}>
                 {ADDR_ICONS[a.label] || '📍'} {a.label}
               </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap>
+              <Typography variant="caption" color="text.secondary"
+                sx={{
+                  display: 'block',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
+                }}>
                 {a.address_text}
               </Typography>
             </Box>
@@ -276,7 +304,14 @@ function UPIPayButton({ order }) {
 }
 
 // ─── My Orders Tab ────────────────────────────────────────────────────────────
-function MyOrdersTab({ onReorder, buyerLocation }) {
+// `compact`: mobile-only rendering mode. Instead of embedding the full
+// LiveTrackingMap and OrderChat inline in every card (which is what desktop
+// still does, unchanged), it shows clean "Track" / "Chat" buttons that hand
+// off to the dedicated Live/Chat pages via onTrack/onChat. This matches the
+// requested mobile architecture:
+//   Orders page: Order -> Track (if active) / Chat / Repeat Order
+// without duplicating the live-tracking or chat logic anywhere new.
+function MyOrdersTab({ onReorder, buyerLocation, compact = false, onTrack, onChat }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviewed, setReviewed] = useState({});
@@ -349,14 +384,32 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
                   {new Date(o.created_at).toLocaleString()}
                 </Typography>
 
-                {/* 📡 Live tracking map for accepted orders */}
+                {/* 📡 Live tracking map for accepted orders (desktop: inline; mobile: Track button → Live page) */}
                 {o.status === 'accepted' && (
-                  <LiveTrackingMap order={o} buyerLocation={buyerLocation} />
+                  compact ? (
+                    <Button size="small" variant="contained" fullWidth
+                      startIcon={<PlaceRounded />}
+                      sx={{ mt: 1, bgcolor: '#FF6B35', '&:hover': { bgcolor: '#C4400A' } }}
+                      onClick={() => onTrack?.(o)}>
+                      Track Order
+                    </Button>
+                  ) : (
+                    <LiveTrackingMap order={o} buyerLocation={buyerLocation} />
+                  )
                 )}
 
-                {/* 💬 Chat for active orders */}
+                {/* 💬 Chat for active orders (desktop: inline; mobile: Chat button → Chat page) */}
                 {['pending', 'accepted'].includes(o.status) && (
-                  <OrderChat orderId={o.id} orderStatus={o.status} />
+                  compact ? (
+                    <Button size="small" variant="outlined" fullWidth
+                      startIcon={<ChatBubbleRounded />}
+                      sx={{ mt: 1 }}
+                      onClick={() => onChat?.(o)}>
+                      Chat
+                    </Button>
+                  ) : (
+                    <OrderChat orderId={o.id} orderStatus={o.status} />
+                  )
                 )}
 
                 {/* Cancel Order — only for pending */}
@@ -419,10 +472,180 @@ function MyOrdersTab({ onReorder, buyerLocation }) {
 }
 
 // ─── Main BuyerPage ───────────────────────────────────────────────────────────
+// ─── Live View (dedicated mobile Live tab) ──────────────────────────────────
+// Reuses LiveTrackingMap as-is (no duplicated tracking logic). If more than
+// one order is being delivered at once, a simple chip selector lets the
+// buyer switch between them instead of stacking every map at once.
+function LiveView({ activeOrders, buyerLocation }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const current = activeOrders.find(o => o.id === selectedId) || activeOrders[0];
+
+  if (activeOrders.length === 0) {
+    return (
+      <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
+        <PlaceRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
+        <Typography variant="h6" color="text.secondary">No active delivery</Typography>
+        <Typography variant="body2" color="text.disabled">
+          Your live delivery tracking will appear here when a merchant is on the way.
+        </Typography>
+      </Card>
+    );
+  }
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      {activeOrders.length > 1 && (
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+          {activeOrders.map(o => (
+            <Chip
+              key={o.id}
+              label={o.product_title}
+              onClick={() => setSelectedId(o.id)}
+              sx={{
+                cursor: 'pointer',
+                fontWeight: (current?.id === o.id) ? 700 : 400,
+                bgcolor: (current?.id === o.id) ? '#FF6B35' : 'white',
+                color: (current?.id === o.id) ? 'white' : 'text.primary',
+                border: '1px solid', borderColor: (current?.id === o.id) ? '#FF6B35' : '#e0e0e0',
+              }}
+            />
+          ))}
+        </Box>
+      )}
+      {current && (
+        <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '2px solid #FF6B35' }}>
+          <Box sx={{ bgcolor: '#FF6B35', color: 'white', px: 2, py: 1.2 }}>
+            <Typography fontWeight={700} fontSize={14}>
+              Ordered: {current.product_title} · from {current.merchant_name}
+            </Typography>
+          </Box>
+          <LiveTrackingMap order={current} buyerLocation={buyerLocation} embedded />
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ─── Chat List View (dedicated mobile Chat tab) ──────────────────────────
+// Lists the buyer's chat-eligible orders (pending/accepted — matching the
+// existing rule already used for the inline OrderChat on desktop) and opens
+// the existing OrderChat component when one is tapped. No new chat backend
+// or endpoints — reuses GET/POST /api/orders/{id}/messages via OrderChat.
+function ChatListView({ focusedOrderId, onOpenedOrder }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openOrderId, setOpenOrderId] = useState(focusedOrderId || null);
+  const [previews, setPreviews] = useState({}); // orderId -> { lastText, awaitingReply }
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await getMyOrders();
+        const eligible = (res.data || []).filter(o => ['pending', 'accepted'].includes(o.status));
+        setOrders(eligible);
+
+        // Best-effort last-message preview per conversation. This is a one-time
+        // fetch per order (not a poll loop) purely to populate the list —
+        // OrderChat itself handles live polling once a conversation is opened.
+        const results = await Promise.all(eligible.map(async (o) => {
+          try {
+            const r = await getMessages(o.id);
+            const msgs = r.data || [];
+            const last = msgs[msgs.length - 1];
+            return [o.id, {
+              lastText: last ? last.text : 'No messages yet',
+              // Heuristic "awaiting reply" badge: last message wasn't sent by
+              // the buyer themselves. There's no persisted read/unread flag
+              // on messages, so this is the closest honest signal available
+              // without adding new backend state.
+              awaitingReply: !!last && last.sender_role !== 'buyer',
+            }];
+          } catch {
+            return [o.id, { lastText: '', awaitingReply: false }];
+          }
+        }));
+        setPreviews(Object.fromEntries(results));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [focusedOrderId]);
+
+  useEffect(() => {
+    if (focusedOrderId) setOpenOrderId(focusedOrderId);
+  }, [focusedOrderId]);
+
+  if (loading) return <Box sx={{ mt: 2 }}><OrderCardSkeleton count={3} /></Box>;
+
+  if (orders.length === 0) {
+    return (
+      <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
+        <ChatBubbleRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
+        <Typography variant="h6" color="text.secondary">No conversations yet</Typography>
+        <Typography variant="body2" color="text.disabled">
+          Chats for your active orders will appear here.
+        </Typography>
+      </Card>
+    );
+  }
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      {orders.map(o => {
+        const isOpen = openOrderId === o.id;
+        const preview = previews[o.id] || {};
+        return (
+          <Card key={o.id} sx={{ mb: 1.5 }}>
+            <Box
+              onClick={() => { setOpenOrderId(isOpen ? null : o.id); onOpenedOrder?.(null); }}
+              sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer' }}
+            >
+              <Box sx={{
+                width: 40, height: 40, borderRadius: '50%', bgcolor: '#1D9E75', color: 'white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0,
+              }}>
+                {o.merchant_name?.[0]?.toUpperCase() || 'M'}
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography fontWeight={700} fontSize={14} noWrap>{o.merchant_name}</Typography>
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                  {o.product_title} • Order #{o.id.slice(-6)}
+                </Typography>
+                {preview.lastText && (
+                  <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block' }}>
+                    {preview.lastText}
+                  </Typography>
+                )}
+              </Box>
+              {preview.awaitingReply && (
+                <Chip label="Reply" size="small" color="secondary" sx={{ fontSize: 10, height: 20 }} />
+              )}
+            </Box>
+            {isOpen && (
+              <Box sx={{ px: 1.5, pb: 1.5 }}>
+                <OrderChat orderId={o.id} orderStatus={o.status} forceOpen />
+              </Box>
+            )}
+          </Card>
+        );
+      })}
+    </Box>
+  );
+}
+
 export default function BuyerPage() {
   const { saveLocation } = useAuth();
   const { notifications, markRead } = useNotifications();
   const { t } = useSettings();
+  const isMobile = useMediaQuery('(max-width:599.95px)');
+  // Mobile bottom-nav state: 'home' | 'live' | 'chat' | 'orders'. Desktop
+  // continues to use the existing `activeTab` Tabs UI below — completely
+  // untouched — so nothing about the desktop layout changes.
+  const [mainView, setMainView] = useState('home');
+  const [focusedChatOrderId, setFocusedChatOrderId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [products, setProducts] = useState([]);
   const [filtered, setFiltered] = useState([]);
@@ -669,14 +892,14 @@ export default function BuyerPage() {
           }}
         />
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
+        {/* Tabs — desktop only; mobile uses the fixed BottomNav instead */}
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2, display: { xs: 'none', sm: 'flex' } }}>
           <Tab label={t('browseProducts')} icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
           <Tab label={t('myOrders')} icon={<ListAltRounded fontSize="small" />} iconPosition="start" />
         </Tabs>
 
-        {/* ── Browse Tab ── */}
-        {activeTab === 0 && (
+        {/* ── Browse / Home content ── */}
+        {(isMobile ? mainView === 'home' : activeTab === 0) && (
           <>
             {locationError && <Alert severity="warning" sx={{ mb: 2 }}>{locationError}</Alert>}
             {orderSuccess && <Alert severity="success" sx={{ mb: 2 }}>{orderSuccess}</Alert>}
@@ -888,24 +1111,41 @@ export default function BuyerPage() {
               </Typography>
             </Box>
 
-            {/* Live tracking banner — shows when any accepted order exists */}
+            {/* Live tracking banner — shows when any accepted order exists.
+                BUG FIX (mobile UI audit): the banner and the map below it are
+                now wrapped in ONE bordered card (instead of two separate
+                bordered/rounded boxes stacked with no gap), and LiveTrackingMap
+                is told `embedded` so it doesn't draw its own competing border/
+                radius. This removes the "two orange boxes overlapping" glitch
+                seen on real devices while keeping normal document flow (no
+                absolute positioning, no negative margins).
+                On mobile the full map has moved to the dedicated Live tab
+                (per the requested bottom-nav architecture), so Home only
+                shows a slim banner that deep-links there via "Track". */}
             {activeOrders.length > 0 && (
               <Box sx={{ mb: 3 }}>
                 {activeOrders.map(o => (
-                  <Box key={o.id} sx={{ mb: 2 }}>
+                  <Box key={o.id} sx={{
+                    mb: 2, borderRadius: 2, overflow: 'hidden',
+                    border: '2px solid #FF6B35', boxSizing: 'border-box', width: '100%',
+                  }}>
                     <Box sx={{
                       bgcolor: '#FF6B35', color: 'white', px: 2, py: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      borderRadius: '8px 8px 0 0',
+                      gap: 1, flexWrap: 'wrap',
                     }}>
-                      <Typography fontWeight={700} fontSize={14}>
+                      <Typography fontWeight={700} fontSize={14} sx={{ wordBreak: 'break-word' }}>
                         🛥 {o.merchant_name} is on the way with your order!
                       </Typography>
-                      <Button size="small" onClick={() => setActiveTab(1)}
-                        sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.6)', fontSize: 11 }}
+                      <Button size="small" onClick={() => isMobile ? setMainView('live') : setActiveTab(1)}
+                        sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.6)', fontSize: 11, flexShrink: 0 }}
                         variant="outlined">Track</Button>
                     </Box>
-                    <LiveTrackingMap order={o} buyerLocation={userLocation} />
+                    {/* Desktop: full embedded map, unchanged from before this fix.
+                        Mobile: no map here — it lives on the Live tab. */}
+                    {!isMobile && (
+                      <LiveTrackingMap order={o} buyerLocation={userLocation} embedded />
+                    )}
                   </Box>
                 ))}
               </Box>
@@ -1042,10 +1282,13 @@ export default function BuyerPage() {
           </>
         )}
 
-        {/* ── My Orders Tab ── */}
-        {activeTab === 1 && (
+        {/* ── My Orders content ── */}
+        {(isMobile ? mainView === 'orders' : activeTab === 1) && (
           <MyOrdersTab
             buyerLocation={userLocation}
+            compact={isMobile}
+            onTrack={() => setMainView('live')}
+            onChat={(order) => { setFocusedChatOrderId(order.id); setMainView('chat'); }}
             onReorder={(order) => {
               // Build a product-like object from the past order for OrderDialog
               setReorderProduct({
@@ -1057,11 +1300,36 @@ export default function BuyerPage() {
                 merchant_name: order.merchant_name,
                 sold_out: false,
               });
-              setActiveTab(0); // switch to browse tab
+              if (isMobile) setMainView('home'); else setActiveTab(0);
             }}
           />
         )}
+
+        {/* ── Live tab (mobile only) ── */}
+        {isMobile && mainView === 'live' && (
+          <LiveView activeOrders={activeOrders} buyerLocation={userLocation} />
+        )}
+
+        {/* ── Chat tab (mobile only) ── */}
+        {isMobile && mainView === 'chat' && (
+          <ChatListView
+            focusedOrderId={focusedChatOrderId}
+            onOpenedOrder={() => setFocusedChatOrderId(null)}
+          />
+        )}
       </Box>
+
+      {/* Fixed mobile bottom navigation. Hidden on desktop (>= sm breakpoint)
+          via BottomNav's own responsive sx — the existing desktop Tabs above
+          remain the only navigation there, unchanged. */}
+      <BottomNav
+        value={mainView}
+        onChange={setMainView}
+        hasActiveDelivery={activeOrders.length > 0}
+        chatBadgeCount={0}
+      />
+      {/* Bottom padding so page content isn't hidden behind the fixed nav on mobile */}
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, height: 64 }} />
 
       {/* Product Detail Dialog */}
       <Dialog open={!!selectedProduct} onClose={() => setSelectedProduct(null)} maxWidth="sm" fullWidth
