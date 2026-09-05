@@ -3,7 +3,7 @@ import {
   Box, Grid, Card, CardContent, Typography, Button,
   Chip, TextField, InputAdornment, CircularProgress, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton,
-  Divider, Fade, Tab, Tabs, Select, MenuItem, FormControl,
+  Divider, Fade, Select, MenuItem, FormControl,
   InputLabel, Collapse, Slider, Rating, useMediaQuery,
 } from '@mui/material';
 import {
@@ -13,14 +13,15 @@ import {
   FilterAltRounded, SortRounded, TuneRounded,
   FavoriteRounded, FavoriteBorderRounded, RepeatRounded, PaymentsRounded,
   MicRounded, MicOffRounded, CancelRounded, PhoneRounded,
-  PlaceRounded, ChatBubbleRounded,
+  PlaceRounded, ChatBubbleRounded, NotificationsActiveRounded, DeleteOutlineRounded,
 } from '@mui/icons-material';
 
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
+import SideNav from '../components/SideNav';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses, cancelOrder, getMessages } from '../utils/api';
+import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavourite, confirmPayment, getAddresses, cancelOrder, getMessages, createReminder, getReminders, deleteReminder } from '../utils/api';
 
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
@@ -636,14 +637,91 @@ function ChatListView({ focusedOrderId, onOpenedOrder }) {
   );
 }
 
+// ─── Reminders View (Issue 5 — "notify me when available") ─────────────
+// Not a 5th bottom-nav tab (per the spec's own preference to avoid a
+// cramped phone nav) — reached via a bell icon near the search bar, and
+// listed as a normal SideNav item on tablet/desktop where there's room.
+function RemindersView() {
+  const [reminders, setReminders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getReminders();
+      setReminders(res.data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleRemove = async (id) => {
+    try {
+      await deleteReminder(id);
+      setReminders(r => r.filter(x => x.id !== id));
+    } catch (e) { console.error(e); }
+  };
+
+  if (loading) return <Box sx={{ mt: 2 }}><OrderCardSkeleton count={3} /></Box>;
+
+  if (reminders.length === 0) {
+    return (
+      <Card sx={{ p: 5, textAlign: 'center', mt: 2 }}>
+        <NotificationsActiveRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
+        <Typography variant="h6" color="text.secondary">No reminders yet</Typography>
+        <Typography variant="body2" color="text.disabled">
+          Search for something that's not available nearby, then tap "Notify me when available" to set a reminder.
+        </Typography>
+      </Card>
+    );
+  }
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="h6" fontWeight={600} mb={2}>Your Reminders</Typography>
+      <Grid container spacing={2}>
+        {reminders.map(r => (
+          <Grid item xs={12} sm={6} key={r.id}>
+            <Card sx={{ border: r.available ? '2px solid #1D9E75' : '1px solid rgba(0,0,0,0.08)' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Typography fontWeight={700}>{r.search_term}</Typography>
+                  <IconButton size="small" onClick={() => handleRemove(r.id)}><DeleteOutlineRounded fontSize="small" /></IconButton>
+                </Box>
+                <Typography variant="caption" color="text.disabled" display="block" mb={1}>
+                  Added {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
+                </Typography>
+                {r.available ? (
+                  <Alert severity="success" sx={{ py: 0.5 }}>
+                    🔔 Available now{r.matched_merchant_name ? ` from ${r.matched_merchant_name}` : ''}!
+                  </Alert>
+                ) : (
+                  <Chip label="Watching — not available yet" size="small" sx={{ bgcolor: '#F5F7F6' }} />
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+}
+
 export default function BuyerPage() {
   const { saveLocation } = useAuth();
   const { notifications, markRead } = useNotifications();
   const { t } = useSettings();
-  const isMobile = useMediaQuery('(max-width:599.95px)');
-  // Mobile bottom-nav state: 'home' | 'live' | 'chat' | 'orders'. Desktop
-  // continues to use the existing `activeTab` Tabs UI below — completely
-  // untouched — so nothing about the desktop layout changes.
+  // BUG FIX (this round): previously this was <600px while SideNav/BottomNav
+  // switch at 768px — so between 600-767px, BOTH the old desktop Tabs AND
+  // the new BottomNav rendered at once, with content routed by `activeTab`
+  // (Tabs) while the visible nav was actually BottomNav (driven by
+  // `mainView`), a real navigation/content mismatch. Widened to 768px so
+  // one breakpoint drives layout, nav, AND content consistently everywhere.
+  const isMobile = useMediaQuery('(max-width:767.95px)');
+  // Nav state — now the single source of truth for content routing on ALL
+  // screen sizes (phone via BottomNav, tablet/desktop via SideNav). The old
+  // `activeTab`/Tabs split is removed below in favor of this one state.
   const [mainView, setMainView] = useState('home');
   const [focusedChatOrderId, setFocusedChatOrderId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -656,7 +734,6 @@ export default function BuyerPage() {
   const [orderProduct, setOrderProduct] = useState(null);
   const [reorderProduct, setReorderProduct] = useState(null);
   const [locationError, setLocationError] = useState('');
-  const [activeTab, setActiveTab] = useState(0);
   const [orderSuccess, setOrderSuccess] = useState('');
   const [alarmNotif, setAlarmNotif] = useState(null);
   const [viewMerchantId, setViewMerchantId] = useState(null);
@@ -676,6 +753,7 @@ export default function BuyerPage() {
     try { return JSON.parse(localStorage.getItem('nearsell_search_history') || '[]'); } catch { return []; }
   });
   const [showHistory, setShowHistory] = useState(false);
+  const [reminderStatus, setReminderStatus] = useState(''); // '' | 'saving' | 'saved'
 
   const saveSearchHistory = (term) => {
     if (!term.trim()) return;
@@ -827,6 +905,21 @@ export default function BuyerPage() {
     setTimeout(() => setOrderSuccess(''), 5000);
   };
 
+  // Issue 5 — "Notify me when available": saves a reminder for the current
+  // search term when nothing matches nearby. Reuses the same `search` state
+  // already driving the product filter above — no separate search UI.
+  const handleSetReminder = async () => {
+    if (!search.trim()) return;
+    setReminderStatus('saving');
+    try {
+      await createReminder({ search_term: search.trim() });
+      setReminderStatus('saved');
+    } catch (e) {
+      console.error(e);
+      setReminderStatus('');
+    }
+  };
+
   if (showSettings) return <SettingsPage onBack={() => setShowSettings(false)} />;
   if (viewMerchantId) return (
     <MerchantPublicPage
@@ -871,6 +964,26 @@ export default function BuyerPage() {
         </Box>
       )}
 
+      {/* ISSUE 3 FIX (responsive tablet/desktop navigation): SideNav renders
+          nothing below 768px (its own media query), so phone layout is
+          unaffected. At >=768px it replaces the desktop Tabs visually —
+          `mainView` already drives content on mobile; reusing it here means
+          tablet/desktop just get another way to set the same state, no
+          parallel navigation model to maintain. Reminders is included here
+          since desktop/tablet has room for a 5th item, per the spec. */}
+      <Box sx={{ display: 'flex' }}>
+        <SideNav
+          value={mainView}
+          onChange={setMainView}
+          items={[
+            { key: 'home', label: 'Home', icon: StorefrontRounded },
+            { key: 'live', label: 'Live', icon: PlaceRounded },
+            { key: 'reminders', label: 'Reminders', icon: NotificationsActiveRounded },
+            { key: 'chat', label: 'Chat', icon: ChatBubbleRounded },
+            { key: 'orders', label: 'Orders', icon: ListAltRounded },
+          ]}
+        />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 }, mt: alarmNotif ? '140px' : 0 }}>
 
         <BuyerDashboard
@@ -892,14 +1005,12 @@ export default function BuyerPage() {
           }}
         />
 
-        {/* Tabs — desktop only; mobile uses the fixed BottomNav instead */}
-        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2, display: { xs: 'none', sm: 'flex' } }}>
-          <Tab label={t('browseProducts')} icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
-          <Tab label={t('myOrders')} icon={<ListAltRounded fontSize="small" />} iconPosition="start" />
-        </Tabs>
+        {/* Old desktop Tabs UI removed — SideNav (>=768px) / BottomNav
+            (<768px) now drive `mainView` consistently everywhere, so there's
+            only one navigation implementation instead of two competing ones. */}
 
         {/* ── Browse / Home content ── */}
-        {(isMobile ? mainView === 'home' : activeTab === 0) && (
+        {mainView === 'home' && (
           <>
             {locationError && <Alert severity="warning" sx={{ mb: 2 }}>{locationError}</Alert>}
             {orderSuccess && <Alert severity="success" sx={{ mb: 2 }}>{orderSuccess}</Alert>}
@@ -1137,7 +1248,7 @@ export default function BuyerPage() {
                       <Typography fontWeight={700} fontSize={14} sx={{ wordBreak: 'break-word' }}>
                         🛥 {o.merchant_name} is on the way with your order!
                       </Typography>
-                      <Button size="small" onClick={() => isMobile ? setMainView('live') : setActiveTab(1)}
+                      <Button size="small" onClick={() => setMainView('live')}
                         sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.6)', fontSize: 11, flexShrink: 0 }}
                         variant="outlined">Track</Button>
                     </Box>
@@ -1156,7 +1267,28 @@ export default function BuyerPage() {
             ) : filtered.length === 0 ? (
               <Card sx={{ p: 5, textAlign: 'center' }}>
                 <StorefrontRounded sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
-                <Typography variant="h6" color="text.secondary">No products found nearby</Typography>
+                <Typography variant="h6" color="text.secondary">
+                  {search.trim() ? `No "${search.trim()}" available near you right now.` : 'No products found nearby'}
+                </Typography>
+                {/* Issue 5 — "Notify me when available": only offered for an
+                    actual search term (a reminder needs something to match
+                    against later), not for the generic empty-radius case. */}
+                {search.trim() && (
+                  reminderStatus === 'saved' ? (
+                    <Alert severity="success" sx={{ mt: 2, display: 'inline-flex' }}>
+                      🔔 We'll notify you when "{search.trim()}" is available nearby.
+                    </Alert>
+                  ) : (
+                    <Button
+                      variant="contained" sx={{ mt: 2 }}
+                      startIcon={reminderStatus === 'saving' ? <CircularProgress size={16} color="inherit" /> : <NotificationsActiveRounded />}
+                      onClick={handleSetReminder}
+                      disabled={reminderStatus === 'saving'}
+                    >
+                      {reminderStatus === 'saving' ? 'Saving...' : 'Notify me when available'}
+                    </Button>
+                  )
+                )}
               </Card>
             ) : (
               <>
@@ -1283,7 +1415,7 @@ export default function BuyerPage() {
         )}
 
         {/* ── My Orders content ── */}
-        {(isMobile ? mainView === 'orders' : activeTab === 1) && (
+        {mainView === 'orders' && (
           <MyOrdersTab
             buyerLocation={userLocation}
             compact={isMobile}
@@ -1300,28 +1432,30 @@ export default function BuyerPage() {
                 merchant_name: order.merchant_name,
                 sold_out: false,
               });
-              if (isMobile) setMainView('home'); else setActiveTab(0);
+              setMainView('home');
             }}
           />
         )}
 
-        {/* ── Live tab (mobile only) ── */}
-        {isMobile && mainView === 'live' && (
+        {/* ── Live tab ── */}
+        {mainView === 'live' && (
           <LiveView activeOrders={activeOrders} buyerLocation={userLocation} />
         )}
 
-        {/* ── Chat tab (mobile only) ── */}
-        {isMobile && mainView === 'chat' && (
+        {/* ── Chat tab ── */}
+        {mainView === 'chat' && (
           <ChatListView
             focusedOrderId={focusedChatOrderId}
             onOpenedOrder={() => setFocusedChatOrderId(null)}
           />
         )}
+
+        {/* ── Reminders tab (Issue 5) ── */}
+        {mainView === 'reminders' && <RemindersView />}
       </Box>
 
-      {/* Fixed mobile bottom navigation. Hidden on desktop (>= sm breakpoint)
-          via BottomNav's own responsive sx — the existing desktop Tabs above
-          remain the only navigation there, unchanged. */}
+      {/* Fixed mobile bottom navigation. Hidden at >=768px via BottomNav's
+          own responsive sx — SideNav above is the only nav there. */}
       <BottomNav
         value={mainView}
         onChange={setMainView}
@@ -1330,6 +1464,8 @@ export default function BuyerPage() {
       />
       {/* Bottom padding so page content isn't hidden behind the fixed nav on mobile */}
       <Box sx={{ display: { xs: 'block', sm: 'none' }, height: 64 }} />
+        </Box>
+      </Box>
 
       {/* Product Detail Dialog */}
       <Dialog open={!!selectedProduct} onClose={() => setSelectedProduct(null)} maxWidth="sm" fullWidth

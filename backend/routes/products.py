@@ -4,6 +4,7 @@ from schemas import ProductCreate, ProductUpdate
 from auth_utils import get_current_user, require_merchant
 from websocket_manager import manager
 from fcm_service import send_multicast_notification
+from routes.notifications import store_notification
 from datetime import datetime
 import uuid
 import math
@@ -198,22 +199,151 @@ async def get_nearby_products(
 ):
     db = get_db()
     all_products = db.collection("products").where("is_active", "==", True).get()
+
+    # ISSUE 4 FIX (product visibility follows merchant's CURRENT location):
+    # Previously distance was computed from `p["merchant_location"]` — the
+    # location captured once at product-creation time. If a merchant later
+    # physically moved (e.g. a mobile cart/stall), their existing products
+    # never became visible at the new location; only a brand-new product
+    # posted from the new spot would show up. That's wrong — a product is
+    # inventory belonging to the merchant, not a fixed listing tied to
+    # wherever they happened to be standing when they created it.
+    #
+    # Fix: batch-fetch every merchant's CURRENT location (the same
+    # `users.{id}.location` field already updated via PUT /auth/location —
+    # reused as-is, no new field/collection) once, then use that as the
+    # distance source for every one of their products. `merchant_location`
+    # on the product itself is left untouched (still shown/used elsewhere
+    # for display/history) — only the nearby-visibility query changes.
+    # Merchants who have never updated a live location (only ever set one at
+    # product-creation) fall back to the product's own stored location, so
+    # nothing regresses for accounts that predate this change.
+    merchant_current_loc = {}
+    all_merchants = db.collection("users").where("role", "==", "merchant").get()
+    for m_doc in all_merchants:
+        m = m_doc.to_dict()
+        loc = m.get("location")
+        if isinstance(loc, str):
+            try:
+                loc = json.loads(loc)
+            except Exception:
+                loc = None
+        if loc and loc.get("coordinates") and len(loc["coordinates"]) == 2:
+            merchant_current_loc[m_doc.id] = loc["coordinates"]  # [lng, lat]
+
     result = []
+    # Track each distinct merchant that is currently within range of THIS
+    # buyer, for the arrival-notification check below — independent of
+    # per-product radius so a merchant with several products only triggers
+    # one arrival check, not one per product.
+    merchants_in_range = {}  # merchant_id -> {name, products: [...]}
 
     for p_doc in all_products:
         p = unflatten_from_firestore(p_doc.to_dict())
-        m_loc = p.get("merchant_location", {})
-        if isinstance(m_loc, dict):
-            coords = m_loc.get("coordinates", [0, 0])
-        else:
-            coords = [0, 0]
+        merchant_id = p.get("merchant_id")
+
+        coords = merchant_current_loc.get(merchant_id)
+        if not coords:
+            # Fallback: no live location on file for this merchant yet —
+            # use the product's own stored location (old behavior),
+            # matching pre-fix behavior for accounts that haven't started
+            # sending live location updates.
+            m_loc = p.get("merchant_location", {})
+            coords = m_loc.get("coordinates", [0, 0]) if isinstance(m_loc, dict) else [0, 0]
+
         dist = haversine(lng, lat, coords[0], coords[1])
         # Use the product's own delivery_radius_km — fallback to buyer's search radius
         product_radius = p.get("delivery_radius_km") or radius_km
         if dist <= product_radius:
             result.append(serialize_product(p, distance_km=dist))
+            entry = merchants_in_range.setdefault(merchant_id, {
+                "name": p.get("merchant_name", "A merchant"),
+                "products": [],
+            })
+            entry["products"].append(p.get("title", "item"))
 
     result.sort(key=lambda x: x["distance_km"] or 999)
+
+    # ── Merchant-arrival notification (with OUTSIDE→INSIDE dedup) ──────────
+    # Reuses the existing notification polling architecture (store_notification
+    # + the buyer app's existing GET /api/notifications/poll loop) — no new
+    # WebSocket/cron infrastructure, per the "reuse polling, no WebSockets"
+    # requirement. This check piggybacks on every nearby-products call (the
+    # buyer app already calls this on load, refresh, and radius/filter
+    # changes), rather than adding a separate background job.
+    try:
+        buyer_id = current_user["id"]
+        arrival_state_ref = db.collection("arrival_state")
+        for merchant_id, info in merchants_in_range.items():
+            state_id = f"{buyer_id}_{merchant_id}"
+            state_doc = arrival_state_ref.document(state_id).get()
+            was_inside = state_doc.exists and state_doc.to_dict().get("inside")
+            if not was_inside:
+                # Transition detected: merchant just entered this buyer's range.
+                product_list = ", ".join(info["products"][:5])
+                store_notification(buyer_id, {
+                    "type": "merchant_nearby",  # distinct from 'merchant_arrived'
+                    # (the per-order "I've Arrived" alarm) so this passive,
+                    # ambient notification never triggers the existing
+                    # full-screen ringing alarm banner on the buyer app.
+                    "title": f"📍 {info['name']} is now near you!",
+                    "body": f"Available: {product_list}",
+                    "merchant_id": merchant_id,
+                    "merchant_name": info["name"],
+                })
+            arrival_state_ref.document(state_id).set({
+                "buyer_id": buyer_id, "merchant_id": merchant_id, "inside": True,
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+
+        # Merchants who WERE inside for this buyer but are no longer in the
+        # current in-range set have left — reset their state so a future
+        # re-entry notifies again (matches the OUTSIDE→INSIDE→OUTSIDE→INSIDE
+        # transition model, not a one-time-ever notification).
+        prev_states = arrival_state_ref.where("buyer_id", "==", buyer_id).where("inside", "==", True).get()
+        for s in prev_states:
+            sd = s.to_dict()
+            if sd.get("merchant_id") not in merchants_in_range:
+                s.reference.update({"inside": False})
+    except Exception as e:
+        print(f"Arrival notification check failed: {e}")
+
+    # ── Product reminder matching ("notify me when available") ─────────────
+    # Checked against this same now-current `result` list, so a reminder
+    # only fires once the matching product is actually visible under the
+    # Issue-4 current-location rule above — exactly the trigger condition
+    # described in the spec (merchant's current location brings a matching
+    # product into range).
+    try:
+        buyer_id = current_user["id"]
+        reminders = db.collection("reminders") \
+            .where("buyer_id", "==", buyer_id) \
+            .where("active", "==", True) \
+            .where("available", "==", False) \
+            .get()
+        for r_doc in reminders:
+            r = r_doc.to_dict()
+            term = r.get("normalized_search_term", "")
+            if not term:
+                continue
+            match = next((prod for prod in result if term in prod["title"].lower()), None)
+            if match:
+                r_doc.reference.update({
+                    "available": True,
+                    "last_notified_at": datetime.utcnow().isoformat(),
+                    "matched_merchant_name": match["merchant_name"],
+                    "matched_product_id": match["id"],
+                })
+                store_notification(buyer_id, {
+                    "type": "reminder_available",
+                    "title": "🔔 Your reminder is available!",
+                    "body": f"{match['title']} is now available near you from {match['merchant_name']}.",
+                    "reminder_id": r.get("id"),
+                    "product_id": match["id"],
+                })
+    except Exception as e:
+        print(f"Reminder matching check failed: {e}")
+
     return result
 
 

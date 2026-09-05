@@ -21,7 +21,10 @@ export default function MerchantBottomNav({ value, onChange, pendingOrdersCount,
     <Box
       component="nav"
       sx={{
-        display: { xs: 'flex', sm: 'none' }, // mobile-only; desktop keeps existing Tabs
+        // ISSUE 3: phone keeps bottom nav; tablet/desktop (>=768px) now use
+        // SideNav.js instead. Threshold matches SideNav's own media query.
+        display: 'flex',
+        '@media (min-width:768px)': { display: 'none' },
         position: 'fixed',
         left: 0, right: 0, bottom: 0,
         zIndex: 1300,

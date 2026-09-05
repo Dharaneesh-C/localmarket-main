@@ -18,6 +18,7 @@ from routes.analytics import router as analytics_router
 from routes.chat import router as chat_router
 from routes.availability import router as availability_router
 from routes.bulk import router as bulk_router
+from routes.reminders import router as reminders_router
 
 
 @asynccontextmanager
@@ -63,6 +64,7 @@ app.include_router(analytics_router, prefix="/api/merchant", tags=["Analytics"])
 app.include_router(chat_router, prefix="/api/orders", tags=["Chat"])
 app.include_router(availability_router, prefix="/api/products", tags=["Availability"])
 app.include_router(bulk_router, prefix="/api/products", tags=["Bulk"])
+app.include_router(reminders_router, prefix="/api/reminders", tags=["Reminders"])
 
 
 @app.get("/")

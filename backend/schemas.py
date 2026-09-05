@@ -196,3 +196,9 @@ class NotificationPayload(BaseModel):
     merchant_name: str
     merchant_location: dict
     image_url: Optional[str] = None
+
+
+# --- Product Reminders ("notify me when available") ---
+class ReminderCreate(BaseModel):
+    search_term: str
+    category: Optional[str] = None

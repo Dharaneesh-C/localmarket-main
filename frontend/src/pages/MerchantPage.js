@@ -3,7 +3,7 @@ import {
   Box, Grid, Card, CardContent, Typography, Button, TextField,
   MenuItem, Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, Alert, CircularProgress, Switch,
-  FormControlLabel, Divider, Avatar, LinearProgress, Tab, Tabs, useMediaQuery,
+  FormControlLabel, Divider, Avatar, LinearProgress,
 } from '@mui/material';
 import {
   AddRounded, EditRounded, DeleteRounded, StorefrontRounded,
@@ -32,6 +32,7 @@ import { useSettings } from '../context/SettingsContext';
 import AreaSelector from '../components/AreaSelector';
 import Navbar from '../components/Navbar';
 import MerchantBottomNav from '../components/MerchantBottomNav';
+import SideNav from '../components/SideNav';
 
 // Fix leaflet icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -286,10 +287,12 @@ function OrdersTab() {
                     </Box>
                   )}
 
-                  {/* 💬 Chat */}
-                  {['pending', 'accepted'].includes(o.status) && (
-                    <OrderChat orderId={o.id} orderStatus={o.status} />
-                  )}
+                  {/* ISSUE 2 FIX: embedded chat removed from the order card.
+                      Chat now lives only in the dedicated merchant Chat tab
+                      (MerchantChatView) — same OrderChat component, same
+                      GET/POST /api/orders/{id}/messages APIs, just no longer
+                      duplicated here. Order cards stay focused on order
+                      info + actions per the updated spec. */}
 
                   {/* Action buttons */}
                   {o.status === 'pending' && (
@@ -476,14 +479,37 @@ function MerchantProfileHub({ user, onOpenProfile, onOpenAnalytics, onOpenSettin
 }
 
 export default function MerchantPage() {
-  const { user } = useAuth();
-  const isMobile = useMediaQuery('(max-width:599.95px)');
+  const { user, saveLocation } = useAuth();
   const [mainView, setMainView] = useState('home');
+
+  // ISSUE 4 FIX (product visibility follows merchant's CURRENT location):
+  // the backend's /products/nearby now sources distance from
+  // `users.{merchant_id}.location` instead of the product's original
+  // posting location — but that field is only ever written when SOMETHING
+  // calls saveLocation(). Buyers already do this on load; merchants never
+  // did. Without this effect, Issue 4's backend fix would have no live
+  // data to read and every merchant would silently fall back to their
+  // original posting location forever. Runs independently of any active
+  // order (unlike useLiveLocationBroadcast, which only fires during an
+  // accepted delivery) since inventory visibility should follow the
+  // merchant everywhere, not just mid-delivery.
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    const report = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => saveLocation(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: false, maximumAge: 60000 }
+      );
+    };
+    report();
+    const interval = setInterval(report, 120000); // every 2 minutes
+    return () => clearInterval(interval);
+  }, [saveLocation]);
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
   const [orders, setOrders] = useState([]);
   const { t } = useSettings();
-  const [activeTab, setActiveTab] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -636,6 +662,25 @@ export default function MerchantPage() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Navbar onOpenSettings={() => setShowSettings(true)} />
+      {/* ISSUE 3 FIX (responsive tablet/desktop navigation): below 768px this
+          renders nothing (SideNav's own CSS handles that) and the layout is
+          identical to before. At >=768px, SideNav replaces the old desktop
+          Tabs entirely — `mainView` now drives content on ALL screen sizes
+          instead of splitting between `activeTab` (desktop) and `mainView`
+          (mobile), which is simpler and matches this round's explicit ask
+          to move tablet/desktop nav to the left. */}
+      <Box sx={{ display: 'flex' }}>
+        <SideNav
+          value={mainView}
+          onChange={setMainView}
+          items={[
+            { key: 'home', label: 'Home', icon: StorefrontRounded },
+            { key: 'orders', label: 'Orders', icon: ListAltRounded, badge: orders.filter(o => o.status === 'pending').length },
+            { key: 'chat', label: 'Chat', icon: ChatBubbleRounded },
+            { key: 'profile', label: 'Profile', icon: PersonPinCircleRounded },
+          ]}
+        />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
       <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 3 } }}>
 
         {/* Header */}
@@ -668,42 +713,14 @@ export default function MerchantPage() {
 
         {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}
 
-        {/* Tabs — desktop only; mobile uses the fixed bottom nav instead */}
-        {(() => {
-          const pendingCount = orders.filter(o => o.status === 'pending').length;
-          return (
-            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3, display: { xs: 'none', sm: 'flex' } }}>
-              <Tab label="My Products" icon={<StorefrontRounded fontSize="small" />} iconPosition="start" />
-              <Tab
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                    Orders
-                    {pendingCount > 0 && (
-                      <Box sx={{
-                        bgcolor: '#FF6B35', color: 'white',
-                        borderRadius: '10px', fontSize: 10,
-                        fontWeight: 700, px: 0.8, py: 0.1, lineHeight: 1.6,
-                      }}>
-                        {pendingCount}
-                      </Box>
-                    )}
-                  </Box>
-                }
-                icon={<ListAltRounded fontSize="small" />}
-                iconPosition="start"
-              />
-            </Tabs>
-          );
-        })()}
-
         {/* ── Orders content ── */}
-        {(isMobile ? mainView === 'orders' : activeTab === 1) && <OrdersTab />}
+        {mainView === 'orders' && <OrdersTab />}
 
-        {/* ── Chat tab (mobile only) ── */}
-        {isMobile && mainView === 'chat' && <MerchantChatView />}
+        {/* ── Chat tab ── */}
+        {mainView === 'chat' && <MerchantChatView />}
 
-        {/* ── Profile tab (mobile only) ── */}
-        {isMobile && mainView === 'profile' && (
+        {/* ── Profile tab ── */}
+        {mainView === 'profile' && (
           <MerchantProfileHub
             user={user}
             onOpenProfile={() => setShowProfile(true)}
@@ -713,7 +730,7 @@ export default function MerchantPage() {
         )}
 
         {/* ── Home / Products content ── */}
-        {(isMobile ? mainView === 'home' : activeTab === 0) && (
+        {mainView === 'home' && (
           <>
             {/* Stats */}
             {(() => {
@@ -834,8 +851,8 @@ export default function MerchantPage() {
 
       </Box>
 
-      {/* Fixed mobile bottom navigation. Hidden on desktop via its own
-          responsive sx — desktop keeps the Tabs above, unchanged. */}
+      {/* Fixed mobile bottom navigation. Hidden at >=768px via its own
+          responsive sx — tablet/desktop use SideNav instead. */}
       <MerchantBottomNav
         value={mainView}
         onChange={setMainView}
@@ -844,6 +861,8 @@ export default function MerchantPage() {
       />
       {/* Bottom padding so page content isn't hidden behind the fixed nav on mobile */}
       <Box sx={{ display: { xs: 'block', sm: 'none' }, height: 64 }} />
+        </Box>
+      </Box>
 
       {/* Bulk Upload Dialog */}
       <Dialog open={bulkOpen} onClose={() => setBulkOpen(false)} maxWidth="md" fullWidth

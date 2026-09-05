@@ -132,4 +132,9 @@ export const checkAvailability = () => API.post('/products/check-availability');
 // Bulk upload
 export const bulkUploadProducts = (products) => API.post('/products/bulk-upload', products);
 
+// Product Reminders ("notify me when available")
+export const createReminder = (data) => API.post('/reminders', data);
+export const getReminders = () => API.get('/reminders');
+export const deleteReminder = (id) => API.delete(`/reminders/${id}`);
+
 export default API;
