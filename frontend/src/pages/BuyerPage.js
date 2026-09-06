@@ -25,6 +25,7 @@ import { getNearbyProducts, placeOrder, getMyOrders, submitReview, toggleFavouri
 
 import { stopAlarm } from '../utils/alarm';
 import { useVoiceSearch } from '../hooks/useVoiceSearch';
+import { normalizeSearchQuery } from '../utils/searchNormalize';
 import LiveTrackingMap from '../components/LiveTrackingMap';
 import OrderChat from '../components/OrderChat';
 import BuyerDashboard from '../components/BuyerDashboard';
@@ -753,7 +754,15 @@ export default function BuyerPage() {
     try { return JSON.parse(localStorage.getItem('nearsell_search_history') || '[]'); } catch { return []; }
   });
   const [showHistory, setShowHistory] = useState(false);
-  const [reminderStatus, setReminderStatus] = useState(''); // '' | 'saving' | 'saved'
+  // ISSUE 4 FIX: this used to be a single global '' | 'saving' | 'saved'
+  // string shared by every search. Once a buyer created ONE reminder (e.g.
+  // "tomato"), this flipped to 'saved' and stayed there — so searching
+  // "onion" next showed the already-saved state instead of a working
+  // "Notify me" button, and the only way to reset it was a full browser
+  // refresh. Keying the status by the normalized search term lets each
+  // search term track its own reminder state independently, so multiple
+  // reminders can be created back-to-back with no refresh needed.
+  const [reminderStatusByTerm, setReminderStatusByTerm] = useState({}); // { [normalizedTerm]: 'saving' | 'saved' }
 
   const saveSearchHistory = (term) => {
     if (!term.trim()) return;
@@ -763,9 +772,19 @@ export default function BuyerPage() {
   };
 
   // Voice search
+  // ISSUE 3 FIX: the Web Speech API often appends trailing punctuation to
+  // recognized phrases ("mouse" -> "mouse."), which silently broke product
+  // search ("mouse." never matches a product titled "Mouse"). Normalize the
+  // transcript once, right here at the source, so both the search box and
+  // everything downstream (filtering, search history, reminders) only ever
+  // see the clean term.
   const { listening, supported: voiceSupported, error: voiceError,
     startListening, stopListening } = useVoiceSearch({
-    onResult: (text) => { setSearch(text); saveSearchHistory(text); },
+    onResult: (text) => {
+      const normalized = normalizeSearchQuery(text);
+      setSearch(normalized);
+      saveSearchHistory(normalized);
+    },
     language: voiceLang,
   });
 
@@ -909,16 +928,23 @@ export default function BuyerPage() {
   // search term when nothing matches nearby. Reuses the same `search` state
   // already driving the product filter above — no separate search UI.
   const handleSetReminder = async () => {
-    if (!search.trim()) return;
-    setReminderStatus('saving');
+    const term = search.trim();
+    if (!term) return;
+    const key = normalizeSearchQuery(term);
+    setReminderStatusByTerm(prev => ({ ...prev, [key]: 'saving' }));
     try {
-      await createReminder({ search_term: search.trim() });
-      setReminderStatus('saved');
+      await createReminder({ search_term: term });
+      // Backend returns already_existed: true if this normalized term already
+      // had an active reminder — surfaced as a distinct message below rather
+      // than silently showing the same "saved" state either way.
+      setReminderStatusByTerm(prev => ({ ...prev, [key]: 'saved' }));
     } catch (e) {
       console.error(e);
-      setReminderStatus('');
+      setReminderStatusByTerm(prev => ({ ...prev, [key]: '' }));
     }
   };
+
+  const currentReminderStatus = reminderStatusByTerm[normalizeSearchQuery(search)] || '';
 
   if (showSettings) return <SettingsPage onBack={() => setShowSettings(false)} />;
   if (viewMerchantId) return (
@@ -1017,7 +1043,16 @@ export default function BuyerPage() {
 
             {/* Search + Filter bar */}
             <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1, mb: 1.5, position: 'relative' }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                {/* ISSUE 2 FIX: this wrapper is scoped to ONLY the search field
+                    (not the whole flex row with the Filters/Refresh buttons), and
+                    is the positioned ancestor the Recent Searches dropdown below
+                    anchors to. Previously the dropdown was a sibling of this row
+                    with no positioned ancestor of its own scoped this tightly, so
+                    it positioned itself against a distant ancestor and rendered
+                    as a near-full-page block instead of a small popover under the
+                    search field. */}
+                <Box sx={{ position: 'relative', flex: 1, minWidth: 0 }}>
                 <TextField
                   placeholder={listening ? '🎤 Listening...' : t('searchPlaceholder')}
                   value={search}
@@ -1066,6 +1101,39 @@ export default function BuyerPage() {
                     {voiceError}
                   </Typography>
                 )}
+
+                {/* Recent search history — compact popover anchored directly below
+                    the search field only (see wrapper Box above), capped to a
+                    reasonable height with internal scroll instead of growing to
+                    cover most of the page. */}
+                {showHistory && searchHistory.length > 0 && (
+                  <Box sx={{
+                    position: 'absolute', zIndex: 100, top: '100%', left: 0, right: 0,
+                    bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
+                    borderRadius: 2, p: 1.5, boxShadow: 3, mt: 0.5,
+                    maxHeight: 240, overflowY: 'auto',
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="caption" fontWeight={600} color="text.secondary">🕐 RECENT SEARCHES</Typography>
+                      <Button size="small" color="error" sx={{ fontSize: 10, py: 0, minWidth: 0 }}
+                        onClick={() => { setSearchHistory([]); localStorage.removeItem('nearsell_search_history'); }}>
+                        Clear
+                      </Button>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+                      {searchHistory.map(term => (
+                        <Chip
+                          key={term}
+                          label={term}
+                          size="small"
+                          onClick={() => { setSearch(term); setShowHistory(false); saveSearchHistory(term); }}
+                          sx={{ cursor: 'pointer', fontSize: 12 }}
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+                </Box>
                 <Button
                   variant="outlined" size="small"
                   startIcon={<TuneRounded />}
@@ -1083,34 +1151,6 @@ export default function BuyerPage() {
                   Refresh
                 </Button>
               </Box>
-
-              {/* Recent search history chips */}
-              {showHistory && searchHistory.length > 0 && (
-                <Box sx={{
-                  position: 'absolute', zIndex: 100, left: 0, right: 0,
-                  bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
-                  borderRadius: 2, p: 1.5, boxShadow: 3, mt: 0.5,
-                }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="caption" fontWeight={600} color="text.secondary">🕐 RECENT SEARCHES</Typography>
-                    <Button size="small" color="error" sx={{ fontSize: 10, py: 0, minWidth: 0 }}
-                      onClick={() => { setSearchHistory([]); localStorage.removeItem('nearsell_search_history'); }}>
-                      Clear
-                    </Button>
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
-                    {searchHistory.map(term => (
-                      <Chip
-                        key={term}
-                        label={term}
-                        size="small"
-                        onClick={() => { setSearch(term); setShowHistory(false); saveSearchHistory(term); }}
-                        sx={{ cursor: 'pointer', fontSize: 12 }}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )}
 
               {/* Expandable filter panel */}
               <Collapse in={showFilters}>
@@ -1274,18 +1314,18 @@ export default function BuyerPage() {
                     actual search term (a reminder needs something to match
                     against later), not for the generic empty-radius case. */}
                 {search.trim() && (
-                  reminderStatus === 'saved' ? (
+                  currentReminderStatus === 'saved' ? (
                     <Alert severity="success" sx={{ mt: 2, display: 'inline-flex' }}>
                       🔔 We'll notify you when "{search.trim()}" is available nearby.
                     </Alert>
                   ) : (
                     <Button
                       variant="contained" sx={{ mt: 2 }}
-                      startIcon={reminderStatus === 'saving' ? <CircularProgress size={16} color="inherit" /> : <NotificationsActiveRounded />}
+                      startIcon={currentReminderStatus === 'saving' ? <CircularProgress size={16} color="inherit" /> : <NotificationsActiveRounded />}
                       onClick={handleSetReminder}
-                      disabled={reminderStatus === 'saving'}
+                      disabled={currentReminderStatus === 'saving'}
                     >
-                      {reminderStatus === 'saving' ? 'Saving...' : 'Notify me when available'}
+                      {currentReminderStatus === 'saving' ? 'Saving...' : 'Notify me when available'}
                     </Button>
                   )
                 )}

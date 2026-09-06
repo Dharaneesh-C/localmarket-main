@@ -9,7 +9,12 @@ router = APIRouter()
 
 
 def normalize(term: str) -> str:
-    return " ".join(term.strip().lower().split())
+    # Strip harmless leading/trailing punctuation (voice search adds a
+    # trailing "." e.g. "mouse.") before collapsing whitespace/case, so
+    # "Mouse", "mouse", and "mouse." all normalize identically. Punctuation
+    # in the middle of a term (e.g. "3-in-1 charger") is left untouched.
+    cleaned = term.strip().strip(".,!?;:\u2018\u2019\u201c\u201d")
+    return " ".join(cleaned.lower().split())
 
 
 def serialize_reminder(r: dict) -> dict:
@@ -23,18 +28,39 @@ def serialize_reminder(r: dict) -> dict:
         "last_notified_at": r.get("last_notified_at"),
         "matched_merchant_name": r.get("matched_merchant_name"),
         "matched_product_id": r.get("matched_product_id"),
+        # Only set (True) on the response to a create call that matched an
+        # existing reminder instead of creating a new one — absent otherwise.
+        "already_existed": r.get("already_existed", False),
     }
 
 
 @router.post("", status_code=201)
 async def create_reminder(data: ReminderCreate, current_user=Depends(require_buyer)):
     db = get_db()
+    normalized_term = normalize(data.search_term)
+
+    # ISSUE 4 FIX — don't create duplicate reminders. "Tomato", "tomato", and
+    # "tomato." (voice search) all normalize the same way, so re-check
+    # against the buyer's existing active reminders before inserting a new one.
+    existing_docs = (
+        db.collection("reminders")
+        .where("buyer_id", "==", current_user["id"])
+        .where("active", "==", True)
+        .where("normalized_search_term", "==", normalized_term)
+        .limit(1)
+        .get()
+    )
+    for existing in existing_docs:
+        existing_data = existing.to_dict()
+        existing_data["already_existed"] = True
+        return serialize_reminder(existing_data)
+
     reminder_id = str(uuid.uuid4())
     doc = {
         "id": reminder_id,
         "buyer_id": current_user["id"],
         "search_term": data.search_term.strip(),
-        "normalized_search_term": normalize(data.search_term),
+        "normalized_search_term": normalized_term,
         "category": data.category,
         "created_at": datetime.utcnow().isoformat(),
         "active": True,
