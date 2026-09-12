@@ -6,6 +6,7 @@ from websocket_manager import manager
 from fcm_service import send_multicast_notification
 from routes.notifications import store_notification
 from datetime import datetime
+from firebase_admin import firestore as fb_firestore
 import uuid
 import math
 import json
@@ -35,6 +36,38 @@ def point_in_polygon(px, py, polygon_coords):
         return inside
     except:
         return False
+
+
+# ISSUE 1 FIX — atomic OUTSIDE→INSIDE arrival check.
+#
+# The old code did a plain get() (read "inside" state) followed later by a
+# plain set() (write "inside": True) with a store_notification() call in
+# between — three separate, non-atomic Firestore operations. Buyer clients
+# call /products/nearby from several places nearly simultaneously (initial
+# load, radius slider, filter change, the periodic active-orders poll can
+# indirectly trigger a refresh too), so two concurrent requests could both
+# read "inside: False" before either one had written "inside: True" back —
+# both then treated it as a fresh OUTSIDE→INSIDE transition and both called
+# store_notification, producing two "is now near you!" records for the same
+# entry event. Wrapping the read-decide-write in a Firestore transaction
+# makes the whole sequence atomic: only one of the concurrent requests can
+# ever observe "was not inside" for a given transition.
+@fb_firestore.transactional
+def _apply_arrival_transition(transaction, state_ref, buyer_id, merchant_id, entry_ts):
+    snapshot = state_ref.get(transaction=transaction)
+    was_inside = bool(snapshot.exists and snapshot.to_dict().get("inside"))
+    transaction.set(state_ref, {
+        "buyer_id": buyer_id,
+        "merchant_id": merchant_id,
+        "inside": True,
+        "updated_at": entry_ts,
+        # Preserved across the transition so the event_key derived from it
+        # stays the same for repeated calls within the same still-inside
+        # window (only actually used the first time, since was_inside will
+        # be True on every call after the first).
+        "entry_ts": (snapshot.to_dict().get("entry_ts") if snapshot.exists and was_inside else entry_ts),
+    })
+    return was_inside
 
 
 def flatten_for_firestore(data: dict) -> dict:
@@ -276,8 +309,13 @@ async def get_nearby_products(
         arrival_state_ref = db.collection("arrival_state")
         for merchant_id, info in merchants_in_range.items():
             state_id = f"{buyer_id}_{merchant_id}"
-            state_doc = arrival_state_ref.document(state_id).get()
-            was_inside = state_doc.exists and state_doc.to_dict().get("inside")
+            state_ref = arrival_state_ref.document(state_id)
+            entry_ts = datetime.utcnow().isoformat()
+
+            was_inside = _apply_arrival_transition(
+                db.transaction(), state_ref, buyer_id, merchant_id, entry_ts
+            )
+
             if not was_inside:
                 # Transition detected: merchant just entered this buyer's range.
                 product_list = ", ".join(info["products"][:5])
@@ -290,11 +328,13 @@ async def get_nearby_products(
                     "body": f"Available: {product_list}",
                     "merchant_id": merchant_id,
                     "merchant_name": info["name"],
+                    # ISSUE 1 FIX: one OUTSIDE→INSIDE transition = one
+                    # notification. entry_ts is fixed by the transaction
+                    # above for the duration of this "inside" stretch, so
+                    # this key stays stable even if store_notification is
+                    # somehow reached twice for the same transition.
+                    "event_key": f"arrival:{buyer_id}:{merchant_id}:{entry_ts}",
                 })
-            arrival_state_ref.document(state_id).set({
-                "buyer_id": buyer_id, "merchant_id": merchant_id, "inside": True,
-                "updated_at": datetime.utcnow().isoformat(),
-            })
 
         # Merchants who WERE inside for this buyer but are no longer in the
         # current in-range set have left — reset their state so a future
@@ -340,6 +380,10 @@ async def get_nearby_products(
                     "body": f"{match['title']} is now available near you from {match['merchant_name']}.",
                     "reminder_id": r.get("id"),
                     "product_id": match["id"],
+                    # ISSUE 1 FIX: guards the same read-then-write race as the
+                    # arrival check above (two concurrent /nearby calls could
+                    # both see available=False before either writes True).
+                    "event_key": f"reminder:{r.get('id')}:available",
                 })
     except Exception as e:
         print(f"Reminder matching check failed: {e}")

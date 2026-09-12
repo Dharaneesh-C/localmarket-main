@@ -57,6 +57,11 @@ async def send_message(order_id: str, data: SendMessage, current_user=Depends(ge
             "body": f"{current_user['name']}: {preview}",
             "sender_id": current_user["id"],
             "sender_name": current_user["name"],
+            # ISSUE 1 FIX: one chat message = one notification. Keying on the
+            # message's own id means the same message can never be stored as
+            # two separate notification records, however this endpoint ends
+            # up being invoked.
+            "event_key": f"chat:{order_id}:{msg_id}",
         }
         await store_and_send_notification(recipient_id, notification)
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { playArrivalAlarm, stopAlarm } from '../utils/alarm';
@@ -25,17 +25,57 @@ export function NotificationProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
 
-  const handleMessage = useCallback((data) => {
-    const newNotif = normalizeNotification(data);
-    setNotifications((prev) => [newNotif, ...prev].slice(0, 50));
-    if (!newNotif.read) {
-      setUnreadCount((prev) => prev + 1);
+  // ISSUE 1 FIX — root cause of the duplicate notification panel entries:
+  // this app has TWO independent delivery channels for the same backend
+  // event — (1) polling, which fetches the real Firestore-backed
+  // notification record, and (2) the FCM foreground listener, which used to
+  // build its OWN fabricated entry (a client-generated `Date.now()` id, not
+  // the real backend id) and push it into the SAME `notifications` list via
+  // this same handleMessage function. Both paths fired for the same event
+  // within moments of each other, so the panel ended up with two entries
+  // that were never able to be recognized as "the same notification"
+  // because their ids never matched.
+  //
+  // Fix: polling is now the ONLY writer to the `notifications` list/
+  // unreadCount (authoritative, real backend ids, so id-based dedup below
+  // actually works). The FCM foreground listener still fires an immediate
+  // native/system-style alert (sound, browser Notification, Android bridge
+  // toast) for responsiveness, but no longer inserts a list entry — the
+  // real entry arrives via the next poll (at most ~8s later) instead.
+  // `knownNotifIdsRef` is the id-based dedup for the polling path itself
+  // (defense in depth against any overlapping poll responses).
+  const knownNotifIdsRef = useRef(new Set());
+  // Suppresses a second native/system alert firing for the SAME event when
+  // it arrives via the other channel shortly after (FCM foreground fires
+  // near-instantly; polling brings the same event moments later, or vice
+  // versa if FCM is delayed). Keyed by a coarse signature of the event
+  // (type + the most identifying field + body text), not a real id — this
+  // only needs to catch near-duplicate alerts within a short window.
+  const recentlyAlertedRef = useRef(new Map()); // eventSignature -> expiry ms
+
+  const alertEventSignature = (n) =>
+    `${n.type || ''}:${n.order_id || n.product_id || n.message_id || n.reminder_id || ''}:${n.body || ''}`;
+
+  const shouldSuppressDuplicateAlert = (n) => {
+    const key = alertEventSignature(n);
+    const now = Date.now();
+    // Clear anything stale while we're here rather than growing forever.
+    for (const [k, expiry] of recentlyAlertedRef.current) {
+      if (expiry < now) recentlyAlertedRef.current.delete(k);
     }
+    if (recentlyAlertedRef.current.has(key)) return true;
+    recentlyAlertedRef.current.set(key, now + 15000); // 15s window
+    return false;
+  };
 
-    // Check if running inside Android WebView
+  // Shared native/system-style alert — sound/toast/browser Notification.
+  // Used by BOTH the polling path and the FCM foreground path, with
+  // shouldSuppressDuplicateAlert() ensuring only one of them actually fires
+  // it per real-world event.
+  const alertForNotification = useCallback((newNotif) => {
+    if (shouldSuppressDuplicateAlert(newNotif)) return;
+
     const isAndroid = typeof window.AndroidBridge !== 'undefined';
-
-    // Helper to show notification — uses Android bridge OR browser API
     const showNotif = (title, body, requireInteraction = false) => {
       if (isAndroid) {
         try { window.AndroidBridge.showNotification(title, body); } catch (e) {}
@@ -44,20 +84,32 @@ export function NotificationProvider({ children }) {
       }
     };
 
-    // 🔔 Merchant arrived — trigger alarm for buyer
     if (newNotif.type === 'merchant_arrived') {
       playArrivalAlarm();
       showNotif(newNotif.title, newNotif.body, true);
       return;
     }
-
     if (newNotif.type === 'new_order') {
       showNotif(newNotif.title || '🛒 New Order!', newNotif.body, true);
       return;
     }
-
     showNotif(newNotif.title, newNotif.body);
   }, [notificationsSupported]);
+
+  // Polling-only: the authoritative writer to the in-app notification list.
+  const handleMessage = useCallback((data) => {
+    const newNotif = normalizeNotification(data);
+
+    if (knownNotifIdsRef.current.has(newNotif.id)) return; // already have it
+    knownNotifIdsRef.current.add(newNotif.id);
+
+    setNotifications((prev) => [newNotif, ...prev].slice(0, 50));
+    if (!newNotif.read) {
+      setUnreadCount((prev) => prev + 1);
+    }
+
+    alertForNotification(newNotif);
+  }, [alertForNotification]);
 
   useWebSocket(user?.id, handleMessage);
 
@@ -97,6 +149,7 @@ export function NotificationProvider({ children }) {
       if (!user) {
         setNotifications([]);
         setUnreadCount(0);
+        knownNotifIdsRef.current = new Set();
         return;
       }
 
@@ -106,6 +159,10 @@ export function NotificationProvider({ children }) {
 
         setNotifications(history);
         setUnreadCount(history.filter((n) => !n.read).length);
+        // Seed the known-ids set from history so a poll that happens to
+        // return something already covered by the initial load load can
+        // never be double-inserted.
+        knownNotifIdsRef.current = new Set(history.map((n) => n.id));
       } catch (err) {
         console.error('Failed to load notifications', err);
       }
@@ -123,20 +180,21 @@ export function NotificationProvider({ children }) {
     const listener = await onForegroundMessage((payload) => {
       console.log("📩 Foreground FCM:", payload);
 
-      // FIX: backend now sends DATA-ONLY FCM messages (see fcm_service.py), so
-      // payload.notification no longer exists — title/body/type/product_id all
-      // live under payload.data now. Reading payload.notification here silently
-      // produced `undefined` title/body for every foreground push.
-      handleMessage({
-        id: Date.now().toString(),
-        read: false,
-        timestamp: new Date().toISOString(),
-        message: {
-          title: payload.data?.title,
-          body: payload.data?.body,
-          type: payload.data?.type,
-          product_id: payload.data?.product_id,
-        },
+      // ISSUE 1 FIX: this used to call handleMessage(...) with a fabricated
+      // local id, which inserted a SECOND, never-matchable entry into the
+      // notifications list alongside the real one polling brings in — see
+      // the long comment above handleMessage's declaration for the full
+      // root-cause explanation. FCM's job here is only to alert the user
+      // immediately (sound/toast) while the app is open; the authoritative
+      // list entry comes exclusively from polling now.
+      alertForNotification({
+        title: payload.data?.title,
+        body: payload.data?.body,
+        type: payload.data?.type,
+        product_id: payload.data?.product_id,
+        order_id: payload.data?.order_id,
+        message_id: payload.data?.message_id,
+        reminder_id: payload.data?.reminder_id,
       });
     });
 
@@ -151,7 +209,7 @@ export function NotificationProvider({ children }) {
     mounted = false;
     unsubscribe();
   };
-}, [user, handleMessage]);
+}, [user, alertForNotification]);
   useEffect(() => {
     // Request browser notification permission for ALL users (both buyer and merchant)
     // Merchant needs it for new order alerts, buyer needs it for merchant_arrived alarm

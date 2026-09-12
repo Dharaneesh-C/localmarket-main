@@ -1043,7 +1043,18 @@ export default function BuyerPage() {
 
             {/* Search + Filter bar */}
             <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+              {/* ISSUE 2 FIX: on narrow phones, cramming [search field][Filters]
+                  [Refresh] into one flex row squeezed the mic/language controls
+                  inside the search field into almost no space (see reported
+                  screenshots — mic icon overlapping the language chip). Stack
+                  into two rows on mobile: the search field gets its own full-
+                  width row, Filters/Refresh move to a second row below. Tablet/
+                  desktop keep the original single-row layout untouched. */}
+              <Box sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 1, mb: 1.5,
+              }}>
                 {/* ISSUE 2 FIX: this wrapper is scoped to ONLY the search field
                     (not the whole flex row with the Filters/Refresh buttons), and
                     is the positioned ancestor the Recent Searches dropdown below
@@ -1068,25 +1079,34 @@ export default function BuyerPage() {
                         <SearchRounded color="action" />
                       </InputAdornment>
                     ),
+                    // ISSUE 2 FIX: explicit gap + flex-nowrap between the
+                    // language chip and the mic button so they never collide
+                    // or overlap, at any width — spacing is responsive CSS
+                    // (gap), not hard-coded pixel positions.
                     endAdornment: voiceSupported ? (
-                      <InputAdornment position="end">
+                      <InputAdornment position="end" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'nowrap' }}>
                         {/* Language toggle */}
                         <Chip
                           label={voiceLang === 'ta-IN' ? '🇮🇳 த' : '🇮🇳 EN'}
                           size="small"
                           onClick={() => setVoiceLang(v => v === 'ta-IN' ? 'en-IN' : 'ta-IN')}
-                          sx={{ mr: 0.5, fontSize: 10, cursor: 'pointer', height: 20 }}
+                          sx={{ fontSize: 10, cursor: 'pointer', height: 20, flexShrink: 0 }}
                         />
-                        {/* Mic button */}
+                        {/* Mic button — its own clearly defined circular touch
+                            area (40x40, well clear of the WCAG-recommended
+                            minimum) that never overlaps the text or the
+                            language chip. */}
                         <IconButton
-                          size="small"
                           onClick={listening ? stopListening : startListening}
                           sx={{
                             color: listening ? '#FF6B35' : 'text.secondary',
+                            width: 40, height: 40, flexShrink: 0,
+                            border: '1px solid', borderColor: listening ? '#FF6B35' : 'divider',
+                            borderRadius: '50%',
                             animation: listening ? 'micPulse 1s ease-in-out infinite' : 'none',
                             '@keyframes micPulse': {
                               '0%,100%': { transform: 'scale(1)' },
-                              '50%': { transform: 'scale(1.2)' },
+                              '50%': { transform: 'scale(1.15)' },
                             },
                           }}
                         >
@@ -1134,11 +1154,19 @@ export default function BuyerPage() {
                   </Box>
                 )}
                 </Box>
+
+                {/* ISSUE 2 FIX: Filters + Refresh grouped in their own row.
+                    On mobile (outer Box is column-flex) this becomes a clearly
+                    separated second row, each button sharing the width evenly.
+                    On tablet/desktop (outer Box is row-flex) this group simply
+                    sits inline after the search field — identical to the
+                    original single-row layout. */}
+                <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
                 <Button
                   variant="outlined" size="small"
                   startIcon={<TuneRounded />}
                   onClick={() => setShowFilters(v => !v)}
-                  sx={{ whiteSpace: 'nowrap', minWidth: 100,
+                  sx={{ whiteSpace: 'nowrap', minWidth: 100, flex: { xs: 1, sm: '0 0 auto' },
                     ...(showFilters && { bgcolor: '#E1F5EE', borderColor: 'primary.main', color: 'primary.main' })
                   }}
                 >
@@ -1147,9 +1175,11 @@ export default function BuyerPage() {
                       size="small" color="primary" sx={{ ml: 0.5, height: 18, fontSize: 10 }} />}
                 </Button>
                 <Button variant="outlined" size="small" startIcon={<RefreshRounded />}
+                  sx={{ whiteSpace: 'nowrap', flex: { xs: 1, sm: '0 0 auto' } }}
                   onClick={() => userLocation && loadProducts(userLocation[0], userLocation[1])}>
                   Refresh
                 </Button>
+                </Box>
               </Box>
 
               {/* Expandable filter panel */}

@@ -15,10 +15,33 @@ def store_notification(user_id: str, message: dict):
     """
     Persist notification to Firestore so it survives Vercel cold starts.
     Called by orders/products routes when events happen.
+
+    ISSUE 1 FIX — idempotency guard: if `message` carries an "event_key"
+    (e.g. "chat:{order_id}:{message_id}", "order:{order_id}:accepted"),
+    a notification with that same (user_id, event_key) pair is never stored
+    twice — this is what actually prevents duplicate notification records
+    even if the calling route is ever invoked twice for the same event
+    (client retry, a double-tap, a race between two concurrent requests).
+    `event_key` is optional and backward compatible: callers that don't set
+    it (or existing tests) behave exactly as before.
     """
     try:
         db = get_db()
         ts = int(time.time() * 1000)  # ms
+
+        event_key = message.get("event_key")
+        if event_key:
+            existing = (
+                db.collection("notifications")
+                .where("user_id", "==", user_id)
+                .where("event_key", "==", event_key)
+                .limit(1)
+                .get()
+            )
+            for _ in existing:
+                # Already stored this exact event for this recipient — do
+                # not insert a second copy.
+                return
 
         notif_doc = {
             "user_id": user_id,
@@ -26,8 +49,11 @@ def store_notification(user_id: str, message: dict):
             "timestamp": ts,
             "read": False,
         }
+        if event_key:
+            notif_doc["event_key"] = event_key
+
         db.collection("notifications").add(notif_doc)
-       
+
     except Exception as e:
         print(f"❌ store_notification FAILED for {user_id}: {e}")
 

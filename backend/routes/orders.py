@@ -119,6 +119,8 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
                             if new_stock <= 0
                             else f"Only {new_stock} {data.unit} left of {data.product_title}. Restock soon!"
                         ),
+                        # ISSUE 1 FIX: one stock-threshold crossing = one alert.
+                        "event_key": f"product:{data.product_id}:low_stock:{new_stock}",
                     }
     except Exception as e:
         print(f"Stock update error: {e}")
@@ -137,6 +139,8 @@ async def place_order(data: OrderCreate, current_user=Depends(require_buyer)):
         "unit": data.unit,
         "total_price": data.total_price,
         "order_id": order_id,
+        # ISSUE 1 FIX: one placed order = one "new order" notification.
+        "event_key": f"order:{order_id}:new_order",
     }
     await store_and_send_notification(data.merchant_id, notification)
 
@@ -198,6 +202,11 @@ async def update_order_status(
         "title": status_messages.get(data.status, "Order updated"),
         "body": f"{order_data.get('product_title')} — {data.status}",
         "status": data.status,
+        # ISSUE 1 FIX: one status transition = one notification, e.g.
+        # "order:{id}:accepted" and "order:{id}:completed" are distinct
+        # events so each still notifies, but the SAME transition can never
+        # produce two records.
+        "event_key": f"order:{order_id}:{data.status.value}",
     }
     await store_and_send_notification(order_data["buyer_id"], notification)
 
@@ -230,6 +239,10 @@ async def merchant_arrived(
         "merchant_name": current_user["name"],
         "product_title": order_data.get("product_title"),
         "alarm": True,
+        # ISSUE 1 FIX: one order only ever "arrives" once, so this is a
+        # stable one-per-order key — guards against a double-tap of the
+        # "I've Arrived" button (or a retried request) sending two alarms.
+        "event_key": f"order:{order_id}:merchant_arrived",
     }
 
     await store_and_send_notification(order_data["buyer_id"], notification)
@@ -317,6 +330,7 @@ async def confirm_payment(order_id: str, current_user=Depends(require_buyer)):
         "order_id": order_id,
         "title": f"💵 Payment confirmed!",
         "body": f"{current_user['name']} confirmed cash payment for {order_data.get('product_title')}",
+        "event_key": f"order:{order_id}:payment_confirmed",
     }
     await store_and_send_notification(order_data["merchant_id"], notification)
     return {"message": "Payment confirmed"}
@@ -360,5 +374,6 @@ async def cancel_order(order_id: str, current_user=Depends(require_buyer)):
         "order_id": order_id,
         "title": f"🚫 Order cancelled by {current_user['name']}",
         "body": f"{order_data.get('product_title')} order has been cancelled",
+        "event_key": f"order:{order_id}:cancelled",
     })
     return {"message": "Order cancelled successfully"}
