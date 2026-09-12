@@ -1100,7 +1100,7 @@ export default function BuyerPage() {
                           onClick={listening ? stopListening : startListening}
                           sx={{
                             color: listening ? '#FF6B35' : 'text.secondary',
-                            width: 40, height: 40, flexShrink: 0,
+                            width: 30, height: 30, flexShrink: 0,
                             border: '1px solid', borderColor: listening ? '#FF6B35' : 'divider',
                             borderRadius: '50%',
                             animation: listening ? 'micPulse 1s ease-in-out infinite' : 'none',
