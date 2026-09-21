@@ -1617,7 +1617,7 @@ export default function BuyerPage() {
           onClose={() => setOrderProduct(null)}
           onSuccess={handleOrderSuccess}
         />
-      )}
+      )} 
 
       {/* Repeat Order Dialog */}
       {reorderProduct && (
@@ -1629,7 +1629,7 @@ export default function BuyerPage() {
             setReorderProduct(null);
             setOrderSuccess('Repeat order placed! 🎉');
             setTimeout(() => setOrderSuccess(''), 5000);
-          }}
+          }}  
         />
       )}
     </Box>
