@@ -11,14 +11,20 @@ router = APIRouter()
 
 # Add your admin email — must match the email used to register on NearSell
 ADMIN_EMAILS = [
-    "dharaneesh04@gmail.com",
-    "dharineeshdharineesh54@gmail.com",
+    "nearsell.team@gmail.com",
 ]
 
 # ─── Admin credentials to auto-seed ──────────────────────────────────────────
-_SEED_EMAIL    = "dharineeshdharineesh54@gmail.com"
-_SEED_PASSWORD = "dharangayou@04"
+_SEED_EMAIL    = "nearsell.team@gmail.com"
+_SEED_PASSWORD = "nearsell@004"
 _SEED_NAME     = "Admin"
+
+# Old admin account(s) — deleted (not just de-listed) the next time /seed
+# runs, so the old email/password can never log in again, admin or not.
+_OLD_ADMIN_EMAILS = [
+    "dharineeshdharineesh54@gmail.com",
+    "dharaneesh04@gmail.com",
+]
 
 
 def require_admin(current_user=Depends(get_current_user)):
@@ -29,7 +35,7 @@ def require_admin(current_user=Depends(get_current_user)):
 
 # ─── One-time seed endpoint — creates admin account if not exists ─────────────
 @router.post("/seed")
-async def seed_admin():
+async def seed_admin(current_user=Depends(require_admin)):
     """
     Call this ONCE to create the admin account in Firestore.
     POST https://nearsell-backend.vercel.app/api/admin/seed
@@ -37,6 +43,13 @@ async def seed_admin():
     """
     db = get_db()
     hashed = bcrypt.hashpw(_SEED_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    deleted = []
+    for old_email in _OLD_ADMIN_EMAILS:
+        old_users = db.collection("users").where("email", "==", old_email).get()
+        for u in old_users:
+            u.reference.delete()
+            deleted.append(old_email)
 
     existing = db.collection("users").where("email", "==", _SEED_EMAIL).get()
 
@@ -47,6 +60,7 @@ async def seed_admin():
             "status": "updated",
             "message": f"Admin account password updated for {_SEED_EMAIL}",
             "user_id": user_id,
+            "deleted_old_admins": deleted,
         }
 
     user_id = str(uuid.uuid4())
@@ -67,6 +81,7 @@ async def seed_admin():
         "status": "created",
         "message": f"Admin account created for {_SEED_EMAIL}",
         "user_id": user_id,
+        "deleted_old_admins": deleted,
     }
 
 

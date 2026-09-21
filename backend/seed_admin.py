@@ -23,11 +23,18 @@ init_firestore()
 
 import bcrypt
 
-ADMIN_EMAIL    = "dharineeshdharineesh54@gmail.com"
-ADMIN_PASSWORD = "dharangayou@04"
+ADMIN_EMAIL    = "nearsell.team@gmail.com"
+ADMIN_PASSWORD = "nearsell@004"
 ADMIN_NAME     = "Admin"
 ADMIN_ROLE     = "buyer"   # role must be "buyer" or "merchant" for JWT to work;
                             # admin access is purely email-based in admin.py
+
+# Old admin account(s) to remove — deleting these means they lose admin
+# access AND can no longer log in as this user at all (the whole account
+# is deleted, not just admin rights).
+OLD_ADMIN_EMAILS = [
+    "dharineeshdharineesh54@gmail.com",
+]
 
 
 def hash_password(password: str) -> str:
@@ -36,6 +43,14 @@ def hash_password(password: str) -> str:
 
 def seed():
     db = get_db()
+
+    # Remove the old admin account(s) first, so only the new one can ever
+    # log in / reach /admin going forward.
+    for old_email in OLD_ADMIN_EMAILS:
+        old_users = db.collection("users").where("email", "==", old_email).get()
+        for u in old_users:
+            u.reference.delete()
+            print(f"🗑️  Deleted old admin account: {old_email} (id: {u.id})")
 
     # Check if already exists
     existing = db.collection("users").where("email", "==", ADMIN_EMAIL).get()

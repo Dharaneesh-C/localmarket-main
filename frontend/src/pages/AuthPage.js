@@ -11,6 +11,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { loginUser, registerUser, forgotPassword, verifyOTP, resetPassword } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { getHomeRoute } from '../utils/adminConfig';
 
 // Password strength checker
 function getPasswordStrength(password) {
@@ -133,8 +134,14 @@ export default function AuthPage() {
       }
       if (res) {
         const { access_token, user_id, name, role: userRole } = res.data;
-        login(access_token, { id: user_id, name, role: userRole, email: form.email });
-        navigate(userRole === 'merchant' ? '/merchant' : '/buyer');
+        const userData = { id: user_id, name, role: userRole, email: form.email };
+        login(access_token, userData);
+        // ADMIN ROUTING FIX: this used to route purely on userRole, so the
+        // seeded admin account (whose role is "buyer" per backend/seed_admin.py)
+        // landed on /buyer and had to be sent to /admin by hand. getHomeRoute
+        // checks the admin email first, role second, so admin login now goes
+        // straight to /admin while ordinary buyer/merchant logins are unchanged.
+        navigate(getHomeRoute(userData));
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong. Please try again.');

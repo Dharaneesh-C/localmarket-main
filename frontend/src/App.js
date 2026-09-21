@@ -11,6 +11,7 @@ import MerchantPage from './pages/MerchantPage';
 import BuyerPage from './pages/BuyerPage';
 import AdminDashboard from './pages/AdminDashboard';
 import { CircularProgress, Box } from '@mui/material';
+import { isAdminUser, getHomeRoute } from './utils/adminConfig';
 
 // Base theme tokens shared between light and dark
 const baseTheme = {
@@ -96,7 +97,7 @@ function ToastListener() {
   return null;
 }
 
-function ProtectedRoute({ children, requiredRole }) {
+function ProtectedRoute({ children, requiredRole, adminOnly }) {
   const { user, loading } = useAuth();
   if (loading) return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -104,8 +105,18 @@ function ProtectedRoute({ children, requiredRole }) {
     </Box>
   );
   if (!user) return <Navigate to="/" replace />;
+  // ADMIN ROUTING FIX: /admin previously used <ProtectedRoute> with no
+  // requiredRole at all — that only checks "is someone logged in", so ANY
+  // authenticated buyer or merchant could already reach /admin just by
+  // typing the URL, even though the backend's own /api/admin/* endpoints
+  // were correctly locked down with require_admin. adminOnly closes that
+  // gap on the frontend too: a non-admin here is sent to their own normal
+  // page instead of the admin dashboard.
+  if (adminOnly && !isAdminUser(user)) {
+    return <Navigate to={getHomeRoute(user)} replace />;
+  }
   if (requiredRole && user.role !== requiredRole) {
-    return <Navigate to={user.role === 'merchant' ? '/merchant' : '/buyer'} replace />;
+    return <Navigate to={getHomeRoute(user)} replace />;
   }
   return children;
 }
@@ -120,10 +131,10 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={
-        user ? <Navigate to={user.role === 'merchant' ? '/merchant' : '/buyer'} replace /> : <LandingPage />
+        user ? <Navigate to={getHomeRoute(user)} replace /> : <LandingPage />
       } />
       <Route path="/auth" element={
-        user ? <Navigate to={user.role === 'merchant' ? '/merchant' : '/buyer'} replace /> : <AuthPage />
+        user ? <Navigate to={getHomeRoute(user)} replace /> : <AuthPage />
       } />
       <Route path="/merchant" element={
         <ProtectedRoute requiredRole="merchant"><MerchantPage /></ProtectedRoute>
@@ -132,7 +143,7 @@ function AppRoutes() {
         <ProtectedRoute requiredRole="buyer"><BuyerPage /></ProtectedRoute>
       } />
       <Route path="/admin" element={
-        <ProtectedRoute><AdminDashboard /></ProtectedRoute>
+        <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
       } />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
