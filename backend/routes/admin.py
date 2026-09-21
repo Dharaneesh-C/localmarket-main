@@ -100,15 +100,86 @@ async def admin_summary(current_user=Depends(require_admin)):
     total_revenue = sum(o.get("total_price", 0) for o in all_orders if o.get("status") == "completed")
     pending_orders = [o for o in all_orders if o.get("status") == "pending"]
 
+    # ─── Order status distribution ───────────────────────────────────────
+    # Built from whatever status values actually appear in Firestore
+    # (pending/accepted/rejected/completed/cancelled per schemas.OrderStatus,
+    # but computed dynamically rather than assumed) so the dashboard never
+    # shows a status that doesn't exist in the data, and doesn't silently
+    # drop one if it's ever extended.
+    order_status_counts = defaultdict(int)
+    for o in all_orders:
+        order_status_counts[o.get("status") or "unknown"] += 1
+
+    # ─── Product health ───────────────────────────────────────────────────
+    # `stock` is optional (unlimited-stock products leave it None) — only
+    # products that actually track stock can be "out of stock"/"low stock".
+    # LOW_STOCK_THRESHOLD mirrors the constant in routes/orders.py's
+    # place_order (where the merchant's own low-stock push notification
+    # fires) so the dashboard's definition of "low stock" always matches
+    # what merchants are actually alerted about.
+    LOW_STOCK_THRESHOLD = 5
+    out_of_stock_products = len([
+        p for p in all_products if p.get("stock") is not None and p["stock"] <= 0
+    ])
+    low_stock_products = len([
+        p for p in all_products
+        if p.get("stock") is not None and 0 < p["stock"] <= LOW_STOCK_THRESHOLD
+    ])
+    inactive_products = len([p for p in all_products if not p.get("is_active")])
+
+    # ─── Time-windowed stats ────────────────────────────────────────────────
+    # Computed in UTC (matches how created_at is stored everywhere else in
+    # this codebase — see datetime.utcnow().isoformat() in orders.py) so
+    # "today" means the same calendar day regardless of which timezone the
+    # admin happens to be viewing from.
+    now = datetime.utcnow()
+    today_str = now.date().isoformat()
+    week_ago = now - timedelta(days=7)
+    month_start_str = now.date().replace(day=1).isoformat()
+
+    def order_date(o):
+        # created_at is an ISO string everywhere it's set; guard against a
+        # missing/malformed value rather than raising.
+        try:
+            return datetime.fromisoformat(o.get("created_at"))
+        except Exception:
+            return None
+
+    today_orders_list = [o for o in all_orders if (o.get("created_at") or "")[:10] == today_str]
+    today_revenue = sum(
+        o.get("total_price", 0) for o in today_orders_list if o.get("status") == "completed"
+    )
+
+    week_orders = len([
+        o for o in all_orders
+        if (d := order_date(o)) is not None and d >= week_ago
+    ])
+
+    month_revenue = sum(
+        o.get("total_price", 0)
+        for o in all_orders
+        if o.get("status") == "completed" and (o.get("created_at") or "") >= month_start_str
+    )
+
     return {
         "total_merchants": len(merchants),
         "total_buyers": len(buyers),
+        "total_users": len(merchants) + len(buyers),
         "total_products": len(all_products),
         "active_products": len([p for p in all_products if p.get("is_active")]),
+        "inactive_products": inactive_products,
+        "out_of_stock_products": out_of_stock_products,
+        "low_stock_products": low_stock_products,
+        "low_stock_threshold": LOW_STOCK_THRESHOLD,
         "total_orders": len(all_orders),
         "pending_orders": len(pending_orders),
         "completed_orders": len([o for o in all_orders if o.get("status") == "completed"]),
+        "order_status_counts": dict(order_status_counts),
         "total_revenue": round(total_revenue, 2),
+        "today_orders": len(today_orders_list),
+        "today_revenue": round(today_revenue, 2),
+        "week_orders": week_orders,
+        "month_revenue": round(month_revenue, 2),
     }
 
 
